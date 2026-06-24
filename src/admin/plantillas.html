@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlertaWTS - Plantillas</title>
+  <link rel="stylesheet" href="plugins/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+  <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
+  <link rel="stylesheet" href="assets/css/custom.css">
+</head>
+<body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
+<div class="wrapper">
+
+  <nav class="main-header navbar navbar-expand navbar-dark">
+    <ul class="navbar-nav">
+      <li class="nav-item"><a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a></li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#"><i class="fas fa-user-circle mr-1"></i><span id="nav-usuario"></span></a>
+        <div class="dropdown-menu dropdown-menu-right" style="background:#1a2234;border:1px solid rgba(0,212,255,.15)">
+          <span class="dropdown-item-text" style="color:#6b7f99;font-size:12px" id="nav-perfil"></span>
+          <div class="dropdown-divider" style="border-color:rgba(0,212,255,.1)"></div>
+          <a class="dropdown-item" href="#" onclick="Auth.cerrar();return false" style="color:#8ba3c7"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar sesion</a>
+        </div>
+      </li>
+    </ul>
+  </nav>
+
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="index.html" class="brand-link"><span class="brand-text font-weight-bold">AlertaWTS</span></a>
+    <div class="sidebar"><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+      <li class="nav-item"><a href="index.html" class="nav-link"><i class="nav-icon fas fa-tachometer-alt"></i><p>Dashboard</p></a></li>
+      <li class="nav-item"><a href="contactos.html" class="nav-link"><i class="nav-icon fas fa-users"></i><p>Contactos</p></a></li>
+      <li class="nav-item"><a href="mensajes.html" class="nav-link"><i class="nav-icon fas fa-comment-dots"></i><p>Mensajes</p></a></li>
+      <li class="nav-item"><a href="plantillas.html" class="nav-link active"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
+      <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
+      <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+    </ul></nav></div>
+  </aside>
+
+  <div class="content-wrapper">
+    <div class="content-header">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <h1><i class="fas fa-file-alt mr-2" style="color:#00d4ff"></i>Plantillas</h1>
+        <button class="btn btn-primary btn-sm" onclick="abrirNuevo()" title="Crear nueva plantilla de mensaje">
+          <i class="fas fa-plus mr-1"></i>Nueva plantilla
+        </button>
+      </div>
+    </div>
+    <section class="content"><div class="container-fluid">
+
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <small style="color:#6b7f99">Variables disponibles: </small>
+          <code style="color:#00d4ff" title="Nombre del contacto">&#123;&#123;nombre&#125;&#125;</code>
+          <code style="color:#00d4ff" title="Celular del contacto">&#123;&#123;celular&#125;&#125;</code>
+          <code style="color:#00d4ff" title="Texto del mensaje">&#123;&#123;mensaje&#125;&#125;</code>
+          <code style="color:#00d4ff" title="Titulo del evento">&#123;&#123;titulo&#125;&#125;</code>
+          <code style="color:#00d4ff" title="Fecha del evento">&#123;&#123;fecha_evento&#125;&#125;</code>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <table id="tablaPlantillas" class="table table-hover table-sm w-100">
+            <thead>
+              <tr><th>ID</th><th>Nombre</th><th>Vista previa</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="tbodyPlantillas"></tbody>
+          </table>
+        </div>
+      </div>
+    </div></section>
+  </div>
+
+  <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
+    <strong>AlertaWTS</strong> v1.0
+  </footer>
+</div>
+
+<!-- Modal Plantilla -->
+<div class="modal" id="modalPlantilla" tabindex="-1" data-backdrop="static">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitulo">Nueva Plantilla</h5>
+        <button type="button" class="close" onclick="Modal.hide('modalPlantilla')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="p-id">
+        <div class="form-group">
+          <label>Nombre <span style="color:#dc3545">*</span></label>
+          <input type="text" class="form-control" id="p-nombre" placeholder="Ej: Recordatorio de cita" title="Nombre identificador de la plantilla">
+        </div>
+        <div class="form-group">
+          <label>Texto <span style="color:#dc3545">*</span></label>
+          <textarea class="form-control" id="p-texto" rows="6"
+            placeholder="Hola {{nombre}}, te recordamos tu cita el {{fecha_evento}}."
+            title="Cuerpo del mensaje. Usa las variables para personalizar."
+            oninput="actualizarPreview()"></textarea>
+          <small style="color:#6b7f99">Usa las variables indicadas arriba para personalizar el mensaje.</small>
+        </div>
+        <div class="form-group" id="grpEstadoP" style="display:none">
+          <label>Estado</label>
+          <select class="form-control" id="p-estado" title="Estado de la plantilla">
+            <option value="1">Activo</option>
+            <option value="0">Inactivo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Vista previa <small style="color:#6b7f99">(datos de ejemplo)</small></label>
+          <div id="p-preview" style="background:#0d1526;padding:12px;border-radius:4px;color:#b0c4de;min-height:60px;white-space:pre-wrap;font-size:13px;border:1px solid rgba(0,212,255,.15)"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalPlantilla')">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarPlantilla()" title="Guardar la plantilla">
+          <i class="fas fa-save mr-1"></i>Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/popper/popper.min.js"></script>
+<script src="plugins/bootstrap/js/bootstrap.min.js"></script>
+<script src="plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="adminlte/js/adminlte.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+let tabla
+const EJEMPLO = { nombre:'Juan Perez', celular:'593987654321', mensaje:'Reunion trimestral', titulo:'Junta directiva', fecha_evento:'25/06/2026 09:00' }
+
+function actualizarPreview() {
+  const t = document.getElementById('p-texto').value
+  document.getElementById('p-preview').textContent = t
+    .replace(/\{\{nombre\}\}/g, EJEMPLO.nombre)
+    .replace(/\{\{celular\}\}/g, EJEMPLO.celular)
+    .replace(/\{\{mensaje\}\}/g, EJEMPLO.mensaje)
+    .replace(/\{\{titulo\}\}/g, EJEMPLO.titulo)
+    .replace(/\{\{fecha_evento\}\}/g, EJEMPLO.fecha_evento)
+}
+
+// ── Abrir modal NUEVO ──────────────────────────────────────────
+function abrirNuevo() {
+  $('#p-id').val('')
+  $('#p-nombre').val('')
+  $('#p-texto').val('')
+  $('#p-estado').val('1')
+  $('#grpEstadoP').hide()
+  $('#p-preview').text('')
+  $('#modalTitulo').text('Nueva Plantilla')
+  Modal.show('modalPlantilla')
+}
+
+// ── Abrir modal EDITAR ─────────────────────────────────────────
+async function abrirEditar(id) {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/plantillas/' + id)
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+    const p = data.dato
+    $('#p-id').val(p.id)
+    $('#p-nombre').val(p.nombre)
+    $('#p-texto').val(p.texto)
+    $('#p-estado').val(p.estado)
+    $('#grpEstadoP').show()
+    $('#modalTitulo').text('Editar Plantilla — ' + p.nombre)
+    actualizarPreview()
+    Modal.show('modalPlantilla')
+  } catch (err) {
+    alert('Error al cargar la plantilla: ' + err.message)
+  }
+}
+
+// ── Inactivar ──────────────────────────────────────────────────
+async function inactivarPlantilla(id, nombre) {
+  if (!confirm('Seguro de inactivar la plantilla "' + nombre + '"?')) return
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/plantillas/' + id, { method: 'DELETE' })
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+    cargarPlantillas()
+  } catch (err) {
+    alert('Error: ' + err.message)
+  }
+}
+
+// ── Guardar (crear o editar) ───────────────────────────────────
+async function guardarPlantilla() {
+  const id     = $('#p-id').val()
+  const nombre = $('#p-nombre').val().trim()
+  const texto  = $('#p-texto').val().trim()
+  if (!nombre || !texto) { alert('Nombre y texto son requeridos'); return }
+
+  try {
+    const resp = await Auth.fetch(
+      CONFIG.BASE_URL + '/api/plantillas' + (id ? '/' + id : ''),
+      { method: id ? 'PUT' : 'POST', body: JSON.stringify({ nombre, texto, estado: $('#p-estado').val() }) }
+    )
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+    Modal.hide('modalPlantilla')
+    cargarPlantillas()
+  } catch (err) {
+    alert('Error: ' + err.message)
+  }
+}
+
+// ── Cargar tabla ───────────────────────────────────────────────
+async function cargarPlantillas() {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/plantillas')
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+
+    if (tabla) { tabla.destroy(); tabla = null }
+
+    $('#tbodyPlantillas').html(data.datos.map(p => `
+      <tr>
+        <td>${p.id}</td>
+        <td><strong style="color:#c8d8f0">${p.nombre}</strong></td>
+        <td style="max-width:260px;font-size:12px;color:#8ba3c7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.texto}">${p.texto}</td>
+        <td>${badgeActivo(p.estado)}</td>
+        <td style="font-size:12px">${fechaLocal(p.fecha_crea)}</td>
+        <td>
+          <button class="btn btn-xs btn-info" onclick="abrirEditar(${p.id})" title="Editar plantilla: ${p.nombre}">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button class="btn btn-xs btn-danger" onclick="inactivarPlantilla(${p.id}, '${p.nombre.replace(/'/g, "\\'")}')" title="Inactivar plantilla: ${p.nombre}">
+            <i class="fas fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join(''))
+
+    tabla = $('#tablaPlantillas').DataTable({ pageLength: 25, order: [[1, 'asc']] })
+  } catch (err) {
+    alert('Error al cargar plantillas: ' + err.message)
+  }
+}
+
+cargarPlantillas()
+</script>
+</body>
+</html>

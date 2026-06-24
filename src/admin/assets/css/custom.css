@@ -1,0 +1,152 @@
+/* ============================================================
+   AlertaWTS — Panel Administrativo — Tema Oscuro Tecnológico
+   ============================================================ */
+
+:root {
+  --wts-cyan:   #00d4ff;
+  --wts-dark:   #141b2d;
+  --wts-card:   #1a2234;
+  --wts-border: rgba(0, 212, 255, 0.15);
+}
+
+body { background: var(--wts-dark) !important; }
+
+/* ---- Sidebar ------------------------------------------------ */
+.main-sidebar { background: #0d1526 !important; border-right: 1px solid var(--wts-border); }
+.brand-link    { background: #0a1020 !important; border-bottom: 1px solid var(--wts-border) !important; }
+.brand-text    { color: var(--wts-cyan) !important; font-weight: 700; letter-spacing: 1px; }
+
+.nav-sidebar .nav-link       { color: #8ba3c7 !important; transition: all .2s; }
+.nav-sidebar .nav-link:hover,
+.nav-sidebar .nav-link.active { color: var(--wts-cyan) !important; background: rgba(0,212,255,.08) !important; border-left: 3px solid var(--wts-cyan); }
+.nav-sidebar .nav-link .nav-icon { color: inherit !important; }
+
+/* ---- Navbar ------------------------------------------------- */
+.main-header.navbar { background: #0d1526 !important; border-bottom: 1px solid var(--wts-border); }
+.navbar-dark .navbar-nav .nav-link { color: #8ba3c7 !important; }
+.navbar-dark .navbar-nav .nav-link:hover { color: var(--wts-cyan) !important; }
+
+/* ---- Cards -------------------------------------------------- */
+.card {
+  background: var(--wts-card) !important;
+  border: 1px solid var(--wts-border) !important;
+  border-radius: 8px;
+  box-shadow: 0 2px 16px rgba(0,0,0,.3);
+}
+.card-header {
+  background: rgba(0,212,255,.05) !important;
+  border-bottom: 1px solid var(--wts-border) !important;
+  color: #c8d8f0 !important;
+  font-weight: 600;
+  letter-spacing: .5px;
+}
+.card-body { color: #b0c4de; }
+
+/* Small tarjetas resumen */
+.small-box {
+  border-radius: 8px !important;
+  border: 1px solid var(--wts-border) !important;
+  overflow: hidden;
+}
+.small-box .inner h3, .small-box .inner p { color: #fff !important; }
+
+/* ---- Tablas ------------------------------------------------- */
+.table { color: #b0c4de !important; }
+.table thead th { background: rgba(0,212,255,.06) !important; color: var(--wts-cyan) !important;
+  border-bottom: 1px solid var(--wts-border) !important; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+.table td, .table th { border-color: rgba(255,255,255,.06) !important; vertical-align: middle; }
+.table-hover tbody tr:hover { background: rgba(0,212,255,.05) !important; }
+
+/* DataTables */
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select { background: #0d1526 !important; color: #b0c4de !important;
+  border: 1px solid var(--wts-border) !important; border-radius: 4px; }
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate { color: #6b7f99 !important; }
+.dataTables_wrapper .page-item .page-link { background: #0d1526 !important; border-color: var(--wts-border) !important;
+  color: #8ba3c7 !important; }
+.dataTables_wrapper .page-item.active .page-link { background: var(--wts-cyan) !important; border-color: var(--wts-cyan) !important;
+  color: #000 !important; }
+
+/* ---- Formularios -------------------------------------------- */
+.form-control, .form-select, select.form-control {
+  background: #0d1526 !important;
+  color: #c8d8f0 !important;
+  border: 1px solid rgba(0,212,255,.25) !important;
+}
+.form-control::placeholder { color: #4a6080 !important; }
+.form-control:focus { border-color: var(--wts-cyan) !important; box-shadow: 0 0 0 2px rgba(0,212,255,.15) !important; }
+label { color: #8ba3c7 !important; font-size: 13px; }
+
+/* ---- Modales ------------------------------------------------ */
+.modal-content {
+  background: #1e2a42 !important;
+  border: 1px solid rgba(0,212,255,.4) !important;
+  box-shadow: 0 0 40px rgba(0,0,0,.8), 0 0 15px rgba(0,212,255,.15) !important;
+}
+.modal-header {
+  background: #162035 !important;
+  border-bottom: 1px solid rgba(0,212,255,.3) !important;
+}
+.modal-footer  { border-top: 1px solid rgba(0,212,255,.2) !important; background: #162035 !important; }
+.modal-title   { color: var(--wts-cyan) !important; font-weight: 600; }
+.modal-body    { background: #1e2a42 !important; padding: 1.5rem !important; }
+
+/* Inputs y selects dentro del modal */
+.modal .form-control,
+.modal .form-select,
+.modal select,
+.modal textarea,
+.modal input {
+  background: #0d1526 !important;
+  color: #e0eaff !important;
+  border: 1px solid rgba(0,212,255,.3) !important;
+  border-radius: 4px !important;
+}
+.modal .form-control::placeholder { color: #4a6080 !important; }
+.modal .form-control:focus,
+.modal select:focus,
+.modal textarea:focus {
+  border-color: var(--wts-cyan) !important;
+  box-shadow: 0 0 0 2px rgba(0,212,255,.2) !important;
+  outline: none !important;
+}
+.modal label { color: #a0b8d8 !important; font-size: 13px; font-weight: 500; }
+
+/* ---- Botones ------------------------------------------------ */
+.btn-cyan, .btn-primary { background: var(--wts-cyan) !important; color: #000 !important; border: none !important; font-weight: 600; }
+.btn-cyan:hover, .btn-primary:hover { background: #00b8db !important; }
+
+/* ---- Content wrapper --------------------------------------- */
+.content-wrapper { background: var(--wts-dark) !important; }
+.content-header h1 { color: #c8d8f0 !important; font-size: 1.4rem; font-weight: 700; }
+.breadcrumb-item, .breadcrumb-item a, .breadcrumb-item.active { color: #6b7f99 !important; }
+
+/* ---- Login -------------------------------------------------- */
+.login-page   { background: var(--wts-dark) !important; }
+.login-box-body { background: var(--wts-card) !important; border: 1px solid var(--wts-border); border-radius: 8px; }
+.login-logo a { color: var(--wts-cyan) !important; text-shadow: 0 0 20px rgba(0,212,255,.4); }
+
+/* Glow efecto en tarjetas stat */
+.small-box.bg-info    { border-color: #17a2b8 !important; }
+.small-box.bg-success { border-color: #28a745 !important; }
+.small-box.bg-warning { border-color: #ffc107 !important; }
+.small-box.bg-danger  { border-color: #dc3545 !important; }
+
+@keyframes fadeIn { from { opacity:0; transform:translateY(10px) } to { opacity:1; transform:translateY(0) } }
+
+/* ---- Dropdown navbar ---------------------------------------- */
+.navbar .dropdown-menu {
+  display: none;
+  opacity: 1 !important;
+  visibility: visible !important;
+  background: #1a2234 !important;
+  border: 1px solid rgba(0,212,255,.2) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,.6) !important;
+  min-width: 180px;
+}
+.navbar .dropdown-menu.show { display: block !important; }
+.navbar .dropdown-item { color: #8ba3c7 !important; padding: 8px 16px; }
+.navbar .dropdown-item:hover { background: rgba(0,212,255,.08) !important; color: var(--wts-cyan) !important; }
+.navbar .dropdown-item-text { color: #6b7f99 !important; font-size: 12px; padding: 6px 16px; }
+.navbar .dropdown-divider { border-color: rgba(0,212,255,.1) !important; }

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlertaWTS - Reportes</title>
+  <link rel="stylesheet" href="plugins/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
+  <link rel="stylesheet" href="assets/css/custom.css">
+</head>
+<body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
+<div class="wrapper">
+
+  <nav class="main-header navbar navbar-expand navbar-dark">
+    <ul class="navbar-nav">
+      <li class="nav-item"><a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a></li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#"><i class="fas fa-user-circle mr-1"></i><span id="nav-usuario"></span></a>
+        <div class="dropdown-menu dropdown-menu-right" style="background:#1a2234;border:1px solid rgba(0,212,255,.15)">
+          <span class="dropdown-item-text" style="color:#6b7f99;font-size:12px" id="nav-perfil"></span>
+          <div class="dropdown-divider" style="border-color:rgba(0,212,255,.1)"></div>
+          <a class="dropdown-item" href="#" onclick="Auth.cerrar()" style="color:#8ba3c7"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar sesion</a>
+        </div>
+      </li>
+    </ul>
+  </nav>
+
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="index.html" class="brand-link"><span class="brand-text font-weight-bold">AlertaWTS</span></a>
+    <div class="sidebar"><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+      <li class="nav-item"><a href="index.html" class="nav-link"><i class="nav-icon fas fa-tachometer-alt"></i><p>Dashboard</p></a></li>
+      <li class="nav-item"><a href="contactos.html" class="nav-link"><i class="nav-icon fas fa-users"></i><p>Contactos</p></a></li>
+      <li class="nav-item"><a href="mensajes.html" class="nav-link"><i class="nav-icon fas fa-comment-dots"></i><p>Mensajes</p></a></li>
+      <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
+      <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
+      <li class="nav-item"><a href="reportes.html" class="nav-link active"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+    </ul></nav></div>
+  </aside>
+
+  <div class="content-wrapper">
+    <div class="content-header">
+      <div class="container-fluid"><h1><i class="fas fa-chart-bar mr-2" style="color:#00d4ff"></i>Reportes</h1></div>
+    </div>
+    <section class="content"><div class="container-fluid">
+
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="row align-items-end">
+            <div class="col-md-3">
+              <label class="mb-1">Desde</label>
+              <input type="date" class="form-control form-control-sm" id="r-desde">
+            </div>
+            <div class="col-md-3">
+              <label class="mb-1">Hasta</label>
+              <input type="date" class="form-control form-control-sm" id="r-hasta">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-primary btn-sm btn-block" onclick="cargarReportes()">
+                <i class="fas fa-search mr-1"></i>Generar
+              </button>
+            </div>
+            <div class="col-md-4 text-right">
+              <small id="r-periodo" style="color:#6b7f99"></small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-8">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-chart-line mr-2" style="color:#00d4ff"></i>Mensajes por dia</div>
+            <div class="card-body"><canvas id="graficaDias" height="130"></canvas></div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-chart-pie mr-2" style="color:#00d4ff"></i>Distribucion por estado</div>
+            <div class="card-body d-flex justify-content-center align-items-center">
+              <canvas id="graficaEstado" height="200" width="200"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-file-alt mr-2" style="color:#00d4ff"></i>Mensajes por plantilla</div>
+            <div class="card-body"><canvas id="graficaPlantilla" height="200"></canvas></div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-trophy mr-2" style="color:#ffc107"></i>Top 10 contactos (enviados)</div>
+            <div class="card-body">
+              <table class="table table-sm">
+                <thead><tr><th>#</th><th>Contacto</th><th class="text-right">Mensajes</th></tr></thead>
+                <tbody id="tablaTop"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div></section>
+  </div>
+
+  <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
+    <strong>AlertaWTS</strong> v1.0
+  </footer>
+</div>
+
+<script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/popper/popper.min.js"></script>
+<script src="plugins/bootstrap/js/bootstrap.min.js"></script>
+<script src="plugins/chart.js/Chart.bundle.min.js"></script>
+<script src="adminlte/js/adminlte.min.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+const ESTADO_NOMBRES = { 1:'Pendiente', 2:'Procesando', 3:'Enviado', 4:'Error' }
+const ESTADO_COLORES = { 1:'#ffc107', 2:'#007bff', 3:'#28a745', 4:'#dc3545' }
+const ESCALA = {
+  xAxes: [{ ticks:{ fontColor:'#8ba3c7' }, gridLines:{ color:'rgba(255,255,255,.04)' } }],
+  yAxes: [{ ticks:{ fontColor:'#8ba3c7', beginAtZero:true }, gridLines:{ color:'rgba(255,255,255,.04)' } }],
+}
+
+let charts = {}
+
+function destruirCharts() { Object.values(charts).forEach(c => c.destroy()); charts = {} }
+
+function initFechas() {
+  const hoy   = new Date()
+  const desde = new Date(hoy); desde.setDate(hoy.getDate() - 30)
+  document.getElementById('r-desde').value = desde.toISOString().slice(0,10)
+  document.getElementById('r-hasta').value = hoy.toISOString().slice(0,10)
+}
+
+async function cargarReportes() {
+  const desde = document.getElementById('r-desde').value
+  const hasta = document.getElementById('r-hasta').value
+  if (!desde || !hasta) { alert('Selecciona el periodo'); return }
+
+  const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/reportes?desde=' + desde + '&hasta=' + hasta)
+  const { porDia, porEstado, porPlantilla, topContactos, periodo } = await resp.json()
+
+  document.getElementById('r-periodo').textContent = periodo.desde + ' -> ' + periodo.hasta
+  destruirCharts()
+
+  charts.dias = new Chart(document.getElementById('graficaDias'), {
+    type: 'bar',
+    data: {
+      labels: porDia.map(r => r.dia),
+      datasets: [
+        { label:'Enviados', data: porDia.map(r => parseInt(r.enviados||0)), backgroundColor:'rgba(40,167,69,.7)', stack:'a' },
+        { label:'Errores',  data: porDia.map(r => parseInt(r.errores||0)),  backgroundColor:'rgba(220,53,69,.7)', stack:'a' },
+        { label:'Otros',    data: porDia.map(r => Math.max(0, parseInt(r.total||0) - parseInt(r.enviados||0) - parseInt(r.errores||0))),
+          backgroundColor:'rgba(108,117,125,.5)', stack:'a' },
+      ],
+    },
+    options: { legend:{ labels:{ fontColor:'#8ba3c7' } }, scales: ESCALA },
+  })
+
+  charts.estado = new Chart(document.getElementById('graficaEstado'), {
+    type: 'doughnut',
+    data: {
+      labels:   porEstado.map(r => ESTADO_NOMBRES[r.estado] || ('Estado ' + r.estado)),
+      datasets: [{ data: porEstado.map(r => parseInt(r.cantidad)), backgroundColor: porEstado.map(r => ESTADO_COLORES[r.estado] || '#6b7f99'), borderWidth:2, borderColor:'#141b2d' }],
+    },
+    options: { legend:{ position:'bottom', labels:{ fontColor:'#8ba3c7', padding:10 } }, cutoutPercentage:60 },
+  })
+
+  charts.plantilla = new Chart(document.getElementById('graficaPlantilla'), {
+    type: 'horizontalBar',
+    data: {
+      labels:   porPlantilla.map(r => r.plantilla),
+      datasets: [{ label:'Mensajes', data: porPlantilla.map(r => parseInt(r.cantidad)), backgroundColor:'rgba(0,212,255,.6)', borderColor:'#00d4ff', borderWidth:1 }],
+    },
+    options: { legend:{ display:false }, scales: ESCALA },
+  })
+
+  document.getElementById('tablaTop').innerHTML = topContactos.map((c, i) => `
+    <tr>
+      <td><span class="badge badge-${i < 3 ? 'warning' : 'secondary'}">${i+1}</span></td>
+      <td>${c.contacto}</td>
+      <td class="text-right"><strong style="color:#00d4ff">${c.mensajes}</strong></td>
+    </tr>
+  `).join('') || '<tr><td colspan="3" class="text-center" style="color:#6b7f99">Sin datos</td></tr>'
+}
+
+initFechas()
+cargarReportes()
+</script>
+</body>
+</html>

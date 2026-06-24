@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlertaWTS - Calendario</title>
+  <link rel="stylesheet" href="plugins/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
+  <link rel="stylesheet" href="assets/css/custom.css">
+  <style>
+    /* ── Mini calendario ── */
+    .cal-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:2px;font-size:12px }
+    .cal-header-day { text-align:center;color:#6b7f99;padding:4px 0;font-weight:600;font-size:11px }
+    .cal-day {
+      aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      border-radius:6px;cursor:pointer;transition:background .15s;position:relative;font-size:12px;color:#b0c4de
+    }
+    .cal-day:hover { background:rgba(0,212,255,.12) }
+    .cal-day.hoy { background:rgba(0,212,255,.18);color:#00d4ff;font-weight:700 }
+    .cal-day.seleccionado { background:#00d4ff;color:#0d1526;font-weight:700 }
+    .cal-day.otro-mes { color:#3a4a63 }
+    .cal-day.tiene-eventos::after,
+    .cal-day.tiene-pendiente::after,
+    .cal-day.tiene-error::after {
+      content:'';position:absolute;bottom:3px;left:50%;transform:translateX(-50%);
+      width:6px;height:6px;border-radius:50%
+    }
+    .cal-day.tiene-eventos::after  { background:#28a745 }
+    .cal-day.tiene-pendiente::after { background:#ffc107 }
+    .cal-day.tiene-error::after    { background:#dc3545 }
+    /* ── Agenda ── */
+    .agenda-grupo { margin-bottom:20px }
+    .agenda-fecha-header {
+      display:flex;align-items:center;gap:10px;margin-bottom:10px;
+      color:#8ba3c7;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px
+    }
+    .agenda-fecha-header::after { content:'';flex:1;height:1px;background:rgba(0,212,255,.1) }
+    .agenda-item {
+      background:#0d1526;border:1px solid rgba(0,212,255,.12);border-radius:8px;
+      padding:12px 14px;margin-bottom:8px;cursor:pointer;transition:border-color .15s
+    }
+    .agenda-item:hover { border-color:rgba(0,212,255,.35) }
+    .agenda-item.estado-1 { border-left:3px solid #ffc107 }
+    .agenda-item.estado-3 { border-left:3px solid #28a745 }
+    .agenda-item.estado-4 { border-left:3px solid #dc3545 }
+    .agenda-hora { font-size:12px;color:#6b7f99;min-width:45px }
+    .agenda-titulo { color:#c8d8f0;font-weight:600;font-size:14px }
+    .agenda-dest { font-size:11px;color:#6b7f99;margin-top:3px }
+    /* ── Custom select con buscador ── */
+    .csel-wrap { position:relative }
+    .csel-input { display:flex;align-items:center;justify-content:space-between;
+      background:#1a2234;border:1px solid rgba(0,212,255,.2);border-radius:4px;
+      padding:6px 12px;cursor:pointer;color:#b0c4de;font-size:14px;min-height:38px;
+      transition:border-color .15s }
+    .csel-input:hover { border-color:rgba(0,212,255,.5) }
+    .csel-input.open { border-color:#00d4ff }
+    .csel-placeholder { color:#6b7f99 }
+    .csel-arrow { font-size:11px;color:#6b7f99;transition:transform .2s }
+    .csel-input.open .csel-arrow { transform:rotate(180deg) }
+    .csel-dropdown { position:absolute;z-index:9999;width:100%;background:#131f35;
+      border:1px solid rgba(0,212,255,.3);border-radius:4px;margin-top:2px;
+      box-shadow:0 8px 24px rgba(0,0,0,.4) }
+    .csel-search { width:100%;background:#0a1220;border:none;border-bottom:1px solid rgba(0,212,255,.15);
+      color:#b0c4de;padding:8px 12px;font-size:13px;outline:none }
+    .csel-list { list-style:none;margin:0;padding:4px 0;max-height:200px;overflow-y:auto }
+    .csel-list li { padding:7px 14px;cursor:pointer;color:#b0c4de;font-size:13px;transition:background .1s }
+    .csel-list li:hover, .csel-list li.active { background:rgba(0,212,255,.12);color:#00d4ff }
+    .csel-list li.csel-empty { color:#6b7f99;cursor:default;font-style:italic }
+    /* ── Alertas en modal ── */
+    .alerta-row { display:flex;gap:8px;align-items:center;margin-bottom:8px;background:#0a1220;border-radius:6px;padding:8px 10px }
+    .alerta-row select, .alerta-row input { flex:1;background:#1a2234;border:1px solid rgba(0,212,255,.2);color:#b0c4de;border-radius:4px;padding:4px 8px;font-size:13px }
+    .alerta-row .btn-quitar { flex:0 0 auto }
+    /* ── Scrollable agenda ── */
+    .agenda-scroll { max-height:calc(100vh - 280px);overflow-y:auto;padding-right:4px }
+    .agenda-scroll::-webkit-scrollbar { width:4px }
+    .agenda-scroll::-webkit-scrollbar-thumb { background:rgba(0,212,255,.2);border-radius:2px }
+    .sidebar-cal-box { background:#131f35;border:1px solid rgba(0,212,255,.1);border-radius:10px;padding:16px }
+    .nav-mes { display:flex;justify-content:space-between;align-items:center;margin-bottom:12px }
+    .nav-mes button { background:none;border:none;color:#00d4ff;cursor:pointer;padding:4px 8px;font-size:16px }
+    .nav-mes span { color:#c8d8f0;font-weight:600;font-size:14px }
+    .leyenda { margin-top:14px;display:flex;flex-direction:column;gap:5px }
+    .leyenda-item { display:flex;align-items:center;gap:8px;font-size:11px;color:#6b7f99 }
+    .leyenda-dot { width:8px;height:8px;border-radius:50%;flex:0 0 auto }
+  </style>
+</head>
+<body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
+<div class="wrapper">
+
+  <nav class="main-header navbar navbar-expand navbar-dark">
+    <ul class="navbar-nav">
+      <li class="nav-item"><a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a></li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#"><i class="fas fa-user-circle mr-1"></i><span id="nav-usuario"></span></a>
+        <div class="dropdown-menu dropdown-menu-right" style="background:#1a2234;border:1px solid rgba(0,212,255,.15)">
+          <span class="dropdown-item-text" style="color:#6b7f99;font-size:12px" id="nav-perfil"></span>
+          <div class="dropdown-divider" style="border-color:rgba(0,212,255,.1)"></div>
+          <a class="dropdown-item" href="#" onclick="Auth.cerrar();return false" style="color:#8ba3c7"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar sesion</a>
+        </div>
+      </li>
+    </ul>
+  </nav>
+
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="index.html" class="brand-link"><span class="brand-text font-weight-bold">AlertaWTS</span></a>
+    <div class="sidebar"><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+      <li class="nav-item"><a href="index.html" class="nav-link"><i class="nav-icon fas fa-tachometer-alt"></i><p>Dashboard</p></a></li>
+      <li class="nav-item"><a href="contactos.html" class="nav-link"><i class="nav-icon fas fa-users"></i><p>Contactos</p></a></li>
+      <li class="nav-item"><a href="mensajes.html" class="nav-link"><i class="nav-icon fas fa-comment-dots"></i><p>Mensajes</p></a></li>
+      <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
+      <li class="nav-item"><a href="calendario.html" class="nav-link active"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
+      <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+    </ul></nav></div>
+  </aside>
+
+  <div class="content-wrapper">
+    <div class="content-header">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <h1><i class="fas fa-calendar-alt mr-2" style="color:#00d4ff"></i>Calendario de Alertas</h1>
+        <button class="btn btn-primary btn-sm" onclick="abrirNuevo()">
+          <i class="fas fa-plus mr-1"></i>Nueva alerta
+        </button>
+      </div>
+    </div>
+
+    <section class="content"><div class="container-fluid">
+      <div class="row">
+
+        <!-- ── Columna izquierda: mini calendario + leyenda ── -->
+        <div class="col-md-3">
+          <div class="sidebar-cal-box">
+            <div class="nav-mes">
+              <button onclick="cambiarMes(-1)" title="Mes anterior"><i class="fas fa-chevron-left"></i></button>
+              <span id="tituloMes"></span>
+              <button onclick="cambiarMes(1)" title="Mes siguiente"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <div class="cal-grid" id="miniCal"></div>
+            <div class="leyenda">
+              <div class="leyenda-item"><div class="leyenda-dot" style="background:#ffc107"></div>Pendiente</div>
+              <div class="leyenda-item"><div class="leyenda-dot" style="background:#28a745"></div>Enviado</div>
+              <div class="leyenda-item"><div class="leyenda-dot" style="background:#dc3545"></div>Con errores</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Columna derecha: agenda ── -->
+        <div class="col-md-9">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <div id="agendaHeader" style="color:#8ba3c7;font-size:13px"></div>
+            <label style="display:flex;align-items:center;gap:7px;cursor:pointer;color:#8ba3c7;font-size:12px;white-space:nowrap;margin:0">
+              <input type="checkbox" id="chkVerTodo" style="accent-color:#00d4ff;width:14px;height:14px" onchange="toggleVerTodo(this.checked)">
+              Ver todo el mes
+            </label>
+          </div>
+          <div class="agenda-scroll" id="agenda">
+            <div class="text-center py-5" style="color:#6b7f99">
+              <i class="fas fa-spinner fa-spin fa-2x mb-2"></i><br>Cargando...
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div></section>
+  </div>
+
+  <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
+    <strong>AlertaWTS</strong> v1.0
+  </footer>
+</div>
+
+<!-- ── Modal Alerta ───────────────────────────────────────────────────────── -->
+<div class="modal" id="modalAlerta" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalAlertaTitulo"><i class="fas fa-calendar-plus mr-2" style="color:#00d4ff"></i>Nueva Alerta</h5>
+        <button type="button" class="close" onclick="Modal.hide('modalAlerta')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="a-id">
+        <div class="form-row">
+          <div class="form-group col-md-8">
+            <label>Título <span style="color:#dc3545">*</span></label>
+            <input type="text" class="form-control" id="a-titulo" placeholder="Ej: Cita médica, Pago de renta...">
+          </div>
+          <div class="form-group col-md-4">
+            <label>Estado</label>
+            <select class="form-control" id="a-estado">
+              <option value="1">Activo</option>
+              <option value="0">Inactivo</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Fecha del evento <span style="color:#dc3545">*</span></label>
+            <input type="date" class="form-control" id="a-fecha">
+          </div>
+          <div class="form-group col-md-6">
+            <label>Hora del evento</label>
+            <input type="time" class="form-control" id="a-hora" value="08:00">
+          </div>
+        </div>
+        <!-- Destino -->
+        <div class="form-group">
+          <label>Enviar a <span style="color:#dc3545">*</span></label>
+          <div style="display:flex;gap:20px;margin-bottom:10px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#b0c4de;font-size:13px">
+              <input type="radio" name="a-tipo-dest" value="contacto" checked onchange="cambiarTipoDest(this.value)"> Contacto
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#b0c4de;font-size:13px">
+              <input type="radio" name="a-tipo-dest" value="grupo" onchange="cambiarTipoDest(this.value)"> Grupo WhatsApp
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#b0c4de;font-size:13px">
+              <input type="radio" name="a-tipo-dest" value="libre" onchange="cambiarTipoDest(this.value)"> Número libre
+            </label>
+          </div>
+          <div class="csel-wrap" id="wrap-contacto">
+            <div class="csel-input" onclick="cselToggle('contacto')">
+              <span id="csel-contacto-label" class="csel-placeholder">-- Seleccionar contacto --</span>
+              <i class="fas fa-chevron-down csel-arrow"></i>
+            </div>
+            <div class="csel-dropdown" id="csel-contacto-drop" style="display:none">
+              <input class="csel-search" placeholder="🔍 Buscar..." oninput="cselFiltrar('contacto',this.value)" autocomplete="off">
+              <ul class="csel-list" id="csel-contacto-list"></ul>
+            </div>
+            <input type="hidden" id="dest-contacto">
+          </div>
+          <div class="csel-wrap" id="wrap-grupo" style="display:none">
+            <div class="csel-input" onclick="cselToggle('grupo')">
+              <span id="csel-grupo-label" class="csel-placeholder">-- Seleccionar grupo --</span>
+              <i class="fas fa-chevron-down csel-arrow"></i>
+            </div>
+            <div class="csel-dropdown" id="csel-grupo-drop" style="display:none">
+              <input class="csel-search" placeholder="🔍 Buscar..." oninput="cselFiltrar('grupo',this.value)" autocomplete="off">
+              <ul class="csel-list" id="csel-grupo-list"></ul>
+            </div>
+            <input type="hidden" id="dest-grupo">
+          </div>
+          <input type="text" class="form-control" id="dest-libre" style="display:none" placeholder="Ej: 593987654321 (con código de país)">
+        </div>
+
+        <!-- Repetición -->
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Repetición</label>
+            <select class="form-control" id="a-repeticion" onchange="toggleRepFin()">
+              <option value="0">Sin repetición</option>
+              <option value="1">Diario</option>
+              <option value="2">Semanal</option>
+              <option value="3">Mensual</option>
+            </select>
+          </div>
+          <div class="form-group col-md-6" id="grpRepFin" style="display:none">
+            <label>Repetir hasta</label>
+            <input type="date" class="form-control" id="a-rep-fin">
+          </div>
+        </div>
+
+        <!-- Plantilla / mensaje -->
+        <div class="form-group">
+          <label>Mensaje</label>
+          <select class="form-control mb-2" id="a-plantilla" onchange="cargarTextoPlantilla()">
+            <option value="">-- Escribir mensaje personalizado --</option>
+          </select>
+          <textarea class="form-control" id="a-mensaje" rows="3" placeholder="Texto del mensaje WhatsApp..."></textarea>
+          <small style="color:#6b7f99">Si seleccionas plantilla, su texto se cargará aquí. Puedes editarlo.</small>
+        </div>
+
+        <!-- Alertas / reglas de cuándo enviar -->
+        <div class="form-group">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="mb-0">Cuándo enviar <span style="color:#6b7f99;font-size:11px">(reglas de notificación)</span></label>
+            <button class="btn btn-xs btn-outline-info" onclick="agregarAlerta()">
+              <i class="fas fa-plus mr-1"></i>Agregar regla
+            </button>
+          </div>
+          <div id="alertasContainer">
+            <!-- filas dinámicas -->
+          </div>
+          <small style="color:#6b7f99">Ejemplo: "3 días antes", "2 horas antes", o "hora fija 08:00 del día del evento"</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalAlerta')">Cancelar</button>
+        <button type="button" class="btn btn-danger mr-auto" id="btnEliminarAlerta" style="display:none" onclick="eliminarEvento()">
+          <i class="fas fa-trash mr-1"></i>Cancelar evento
+        </button>
+        <button type="button" class="btn btn-primary" onclick="guardarEvento()">
+          <i class="fas fa-save mr-1"></i>Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Mensajes del Evento ──────────────────────────────────────────── -->
+<div class="modal" id="modalMensajes" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-list mr-2" style="color:#00d4ff"></i><span id="modalEventoTitulo"></span></h5>
+        <button type="button" class="close" onclick="Modal.hide('modalMensajes')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body" id="cuerpoMsgEvento">
+        <div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x" style="color:#00d4ff"></i></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalMensajes')">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/bootstrap/js/bootstrap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+// ── Estado global ───────────────────────────────────────────────────────────
+let vistaYear  = new Date().getFullYear()
+let vistaMes   = new Date().getMonth() + 1   // 1-12
+let eventosCache = []        // eventos del mes actual
+let contactosCache = []
+let gruposCache    = []
+let plantillasCache = []
+
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const DIAS_CORTOS = ['Lu','Ma','Mi','Ju','Vi','Sá','Do']
+
+// ── Cargar datos auxiliares ─────────────────────────────────────────────────
+async function cargarAuxiliares() {
+  const [rC, rG, rP] = await Promise.all([
+    Auth.fetch(CONFIG.BASE_URL + '/api/contactos').then(r => r.json()),
+    Auth.fetch(CONFIG.BASE_URL + '/api/grupos').then(r => r.json()),
+    Auth.fetch(CONFIG.BASE_URL + '/api/plantillas').then(r => r.json()),
+  ])
+  contactosCache  = rC.ok  ? rC.datos  : []
+  gruposCache     = rG.ok  ? rG.datos  : []
+  plantillasCache = rP.ok  ? rP.datos  : []
+
+  const selP = document.getElementById('a-plantilla')
+
+  cselPoblar('contacto', contactosCache, c => `${c.nombres} ${c.apellidos||''} — ${c.celular||''}`)
+  cselPoblar('grupo',    gruposCache,    g => g.nombre)
+  plantillasCache.forEach(p => {
+    const opt = document.createElement('option')
+    opt.value = p.id
+    opt.dataset.texto = p.texto
+    opt.textContent = p.nombre
+    selP.appendChild(opt)
+  })
+}
+
+// ── Cargar y renderizar mes ─────────────────────────────────────────────────
+async function cargarMes(year, mes) {
+  vistaYear = year; vistaMes = mes; diaSeleccionado = null
+  document.getElementById('tituloMes').textContent = `${MESES[mes-1]} ${year}`
+
+  try {
+    const resp = await Auth.fetch(`${CONFIG.BASE_URL}/api/calendario?year=${year}&month=${mes}`)
+    const data = await resp.json()
+    eventosCache = data.ok ? data.datos : []
+  } catch(e) {
+    eventosCache = []
+  }
+
+  renderMiniCal()
+  renderAgenda()
+}
+
+function cambiarMes(delta) {
+  let m = vistaMes + delta, y = vistaYear
+  if (m > 12) { m = 1; y++ }
+  if (m < 1)  { m = 12; y-- }
+  cargarMes(y, m)
+}
+
+// ── Mini calendario ─────────────────────────────────────────────────────────
+function renderMiniCal() {
+  const hoy = new Date()
+  const primerDia = new Date(vistaYear, vistaMes - 1, 1)
+  let startDow = primerDia.getDay() // 0=Dom...6=Sab → convertir a Lu=0
+  startDow = (startDow + 6) % 7
+
+  // Días del mes anterior
+  const diasPrevMes = new Date(vistaYear, vistaMes - 1, 0).getDate()
+  const totalDias   = new Date(vistaYear, vistaMes, 0).getDate()
+
+  // Índice de eventos por día (1-based)
+  const eventoPorDia = {}
+  for (const ev of eventosCache) {
+    const d = new Date(ev.fecha_evento).getDate()
+    if (!eventoPorDia[d]) eventoPorDia[d] = { errores:0, pendientes:0, enviados:0 }
+    eventoPorDia[d].errores    += parseInt(ev.errores    || 0)
+    eventoPorDia[d].pendientes += parseInt(ev.pendientes || 0)
+    eventoPorDia[d].enviados   += parseInt(ev.enviados   || 0)
+  }
+
+  let html = DIAS_CORTOS.map(d => `<div class="cal-header-day">${d}</div>`).join('')
+
+  // Días del mes anterior (relleno)
+  for (let i = startDow - 1; i >= 0; i--) {
+    html += `<div class="cal-day otro-mes">${diasPrevMes - i}</div>`
+  }
+
+  // Días del mes actual
+  for (let d = 1; d <= totalDias; d++) {
+    const esHoy = hoy.getFullYear()===vistaYear && hoy.getMonth()===vistaMes-1 && hoy.getDate()===d
+    const ev = eventoPorDia[d]
+    let cls = 'cal-day'
+    if (esHoy) cls += ' hoy'
+    if (ev) {
+      cls += ev.errores > 0 ? ' tiene-error' : ev.pendientes > 0 ? ' tiene-pendiente' : ' tiene-eventos'
+    }
+    html += `<div class="${cls}" onclick="filtrarPorDia(${d})" title="${ev ? 'Ver eventos' : 'Nueva alerta'}">${d}</div>`
+  }
+
+  // Días del mes siguiente (relleno)
+  const celdas = startDow + totalDias
+  const resto  = celdas % 7 === 0 ? 0 : 7 - (celdas % 7)
+  for (let d = 1; d <= resto; d++) {
+    html += `<div class="cal-day otro-mes">${d}</div>`
+  }
+
+  document.getElementById('miniCal').innerHTML = html
+}
+
+// ── Agenda ──────────────────────────────────────────────────────────────────
+let diaSeleccionado = null
+
+function renderAgenda(diaFiltro) {
+  const agenda = document.getElementById('agenda')
+  const header = document.getElementById('agendaHeader')
+
+  // Quitar selección anterior
+  document.querySelectorAll('.cal-day.seleccionado').forEach(el => el.classList.remove('seleccionado'))
+
+  let eventos = eventosCache
+  if (diaFiltro) {
+    eventos = eventosCache.filter(ev => new Date(ev.fecha_evento).getDate() === diaFiltro)
+    const celdas = document.querySelectorAll('.cal-day')
+    celdas.forEach(el => { if (el.textContent.trim() == diaFiltro && !el.classList.contains('otro-mes')) el.classList.add('seleccionado') })
+  }
+
+  header.innerHTML = diaFiltro
+    ? `<span>${eventos.length} alerta(s) el <strong>${diaFiltro} de ${MESES[vistaMes-1]}</strong></span>`
+    : `<span>${eventos.length} alerta(s) en <strong>${MESES[vistaMes-1]} ${vistaYear}</strong></span>`
+
+  if (!eventos.length) {
+    agenda.innerHTML = diaFiltro
+      ? `<div class="text-center py-5" style="color:#6b7f99">
+          <i class="fas fa-calendar-day fa-3x mb-3" style="opacity:.3"></i><br>
+          No hay alertas el <strong style="color:#b0c4de">${diaFiltro} de ${MESES[vistaMes-1]}</strong><br>
+          <button class="btn btn-primary btn-sm mt-3" onclick="abrirNuevoDia(${vistaYear},${vistaMes},${diaFiltro})"><i class="fas fa-plus mr-1"></i>Crear alerta para este día</button>
+        </div>`
+      : `<div class="text-center py-5" style="color:#6b7f99">
+          <i class="fas fa-calendar-times fa-3x mb-3" style="opacity:.3"></i><br>
+          No hay alertas en ${MESES[vistaMes-1]} ${vistaYear}<br>
+          <button class="btn btn-primary btn-sm mt-3" onclick="abrirNuevo()"><i class="fas fa-plus mr-1"></i>Nueva alerta</button>
+        </div>`
+    return
+  }
+
+  // Agrupar por día
+  const grupos = {}
+  for (const ev of eventos) {
+    const d = new Date(ev.fecha_evento)
+    const key = d.toISOString().slice(0, 10)
+    if (!grupos[key]) grupos[key] = []
+    grupos[key].push(ev)
+  }
+
+  let html = ''
+  for (const [key, evs] of Object.entries(grupos)) {
+    const fecha = new Date(key + 'T12:00:00')
+    const label = fecha.toLocaleDateString('es-EC', { weekday:'long', day:'numeric', month:'long' })
+    html += `<div class="agenda-grupo">
+      <div class="agenda-fecha-header"><i class="fas fa-calendar-day mr-1"></i>${label}</div>`
+
+    for (const ev of evs) {
+      const hora = new Date(ev.fecha_evento).toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' })
+      const total = parseInt(ev.total_mensajes || 0)
+      const env   = parseInt(ev.enviados       || 0)
+      const err   = parseInt(ev.errores        || 0)
+      const pend  = parseInt(ev.pendientes      || 0)
+      const estadoClass = err > 0 ? 'estado-4' : pend > 0 ? 'estado-1' : 'estado-3'
+
+      let destLabel = ''
+      if (ev.contacto_nombre && ev.contacto_nombre.trim() !== ' ')
+        destLabel = `<i class="fas fa-user mr-1"></i>${ev.contacto_nombre.trim()}`
+      else if (ev.grupo_nombre)
+        destLabel = `<i class="fab fa-whatsapp mr-1" style="color:#25D366"></i>${ev.grupo_nombre}`
+      else if (ev.destino_libre)
+        destLabel = `<i class="fas fa-mobile-alt mr-1"></i>${ev.destino_libre}`
+
+      const progreso = total > 0 ? `<span style="font-size:11px;color:#6b7f99;margin-left:8px">${env}/${total} enviados${err > 0 ? ` · ${err} errores` : ''}</span>` : ''
+
+      html += `<div class="agenda-item ${estadoClass}" onclick="editarEvento(${ev.id})">
+        <div class="d-flex align-items-start">
+          <span class="agenda-hora">${hora}</span>
+          <div class="flex-grow-1 ml-2">
+            <div class="agenda-titulo">${ev.titulo}</div>
+            <div class="agenda-dest">${destLabel}${progreso}</div>
+          </div>
+          <div class="d-flex gap-2 ml-2" onclick="event.stopPropagation()">
+            <button class="btn btn-xs btn-info" onclick="verMensajes(${ev.id},'${ev.titulo.replace(/'/g,"\\'")}')">
+              <i class="fas fa-list"></i>
+            </button>
+          </div>
+        </div>
+      </div>`
+    }
+    html += '</div>'
+  }
+
+  agenda.innerHTML = html
+}
+
+function filtrarPorDia(dia) {
+  const chk = document.getElementById('chkVerTodo')
+  if (diaSeleccionado === dia) {
+    // Mismo día → quitar filtro y volver a "ver todo"
+    diaSeleccionado = null
+    chk.checked = true
+    localStorage.setItem('cal_ver_todo', '1')
+    renderAgenda()
+  } else {
+    // Nuevo día → desmarcar checkbox y filtrar
+    diaSeleccionado = dia
+    chk.checked = false
+    localStorage.setItem('cal_ver_todo', '0')
+    renderAgenda(dia)
+  }
+}
+
+function verTodoMes() {
+  diaSeleccionado = null
+  renderAgenda()
+}
+
+function toggleVerTodo(checked) {
+  localStorage.setItem('cal_ver_todo', checked ? '1' : '0')
+  if (checked) {
+    diaSeleccionado = null
+    document.querySelectorAll('.cal-day.seleccionado').forEach(el => el.classList.remove('seleccionado'))
+  }
+  renderAgenda(checked ? null : diaSeleccionado)
+}
+
+// ── Modal nuevo/editar ──────────────────────────────────────────────────────
+function abrirNuevoDia(y, m, d) {
+  abrirNuevo(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`)
+}
+
+function abrirNuevo(fechaPreset) {
+  document.getElementById('a-id').value = ''
+  document.getElementById('a-titulo').value = ''
+  const fechaDia = diaSeleccionado
+    ? `${vistaYear}-${String(vistaMes).padStart(2,'0')}-${String(diaSeleccionado).padStart(2,'0')}`
+    : new Date().toISOString().slice(0,10)
+  document.getElementById('a-fecha').value = fechaPreset || fechaDia
+  document.getElementById('a-hora').value = new Date().toTimeString().slice(0,5)
+  document.getElementById('a-estado').value = '1'
+  document.getElementById('a-repeticion').value = '0'
+  document.getElementById('a-rep-fin').value = ''
+  document.getElementById('grpRepFin').style.display = 'none'
+  document.getElementById('a-plantilla').value = ''
+  document.getElementById('a-mensaje').value = ''
+  document.getElementById('modalAlertaTitulo').innerHTML = '<i class="fas fa-calendar-plus mr-2" style="color:#00d4ff"></i>Nueva Alerta'
+  document.getElementById('btnEliminarAlerta').style.display = 'none'
+  document.querySelectorAll('input[name="a-tipo-dest"]')[0].checked = true
+  cambiarTipoDest('contacto')
+  cselReset('contacto', '-- Seleccionar contacto --')
+  cselReset('grupo',    '-- Seleccionar grupo --')
+  document.getElementById('dest-libre').value = ''
+  document.getElementById('alertasContainer').innerHTML = ''
+  agregarAlerta() // al menos una regla por defecto
+  Modal.show('modalAlerta')
+}
+
+async function editarEvento(id) {
+  Modal.show('modalAlerta')
+  document.getElementById('modalAlertaTitulo').innerHTML = '<i class="fas fa-edit mr-2" style="color:#00d4ff"></i>Editar Alerta'
+  document.getElementById('btnEliminarAlerta').style.display = ''
+
+  try {
+    const resp = await Auth.fetch(`${CONFIG.BASE_URL}/api/calendario/${id}`)
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    const ev = data.dato
+
+    document.getElementById('a-id').value = id
+    document.getElementById('a-titulo').value = ev.wts_calendario_titulo || ''
+    const fechaEvento = new Date(ev.wts_calendario_fecha_evento)
+    document.getElementById('a-fecha').value = fechaEvento.toISOString().slice(0,10)
+    document.getElementById('a-hora').value  = fechaEvento.toTimeString().slice(0,5)
+    document.getElementById('a-estado').value = ev.wts_calendario_estado || 1
+    document.getElementById('a-repeticion').value = ev.wts_calendario_repeticion || 0
+    document.getElementById('a-rep-fin').value = ev.wts_calendario_repeticion_fin ? ev.wts_calendario_repeticion_fin.slice(0,10) : ''
+    toggleRepFin()
+
+    // Plantilla / mensaje
+    document.getElementById('a-plantilla').value  = ev.wts_plantilla_id || ''
+    document.getElementById('a-mensaje').value    = ev.wts_calendario_mensaje_texto || ev.wts_plantilla_texto || ''
+
+    // Destino
+    if (ev.wts_contacto_id) {
+      document.querySelectorAll('input[name="a-tipo-dest"]')[0].checked = true
+      cambiarTipoDest('contacto')
+      const c = contactosCache.find(x => x.id == ev.wts_contacto_id)
+      if (c) cselSeleccionarValor('contacto', ev.wts_contacto_id, `${c.nombres} ${c.apellidos||''} — ${c.celular||''}`)
+    } else if (ev.wts_grupo_id) {
+      document.querySelectorAll('input[name="a-tipo-dest"]')[1].checked = true
+      cambiarTipoDest('grupo')
+      const g = gruposCache.find(x => x.id == ev.wts_grupo_id)
+      if (g) cselSeleccionarValor('grupo', ev.wts_grupo_id, g.nombre)
+    } else {
+      document.querySelectorAll('input[name="a-tipo-dest"]')[2].checked = true
+      cambiarTipoDest('libre')
+      document.getElementById('dest-libre').value = ev.wts_calendario_destino_libre || ''
+    }
+
+    // Alertas
+    document.getElementById('alertasContainer').innerHTML = ''
+    if (data.alertas && data.alertas.length) {
+      data.alertas.forEach(a => agregarAlerta(a))
+    } else {
+      agregarAlerta()
+    }
+  } catch(e) {
+    Alerta.error(e.message)
+  }
+}
+
+// ── Tipo de destino ─────────────────────────────────────────────────────────
+function cambiarTipoDest(tipo) {
+  document.getElementById('wrap-contacto').style.display = tipo === 'contacto' ? '' : 'none'
+  document.getElementById('wrap-grupo').style.display    = tipo === 'grupo'    ? '' : 'none'
+  document.getElementById('dest-libre').style.display    = tipo === 'libre'    ? '' : 'none'
+  cselCerrarTodos()
+}
+
+// ── Custom Select ────────────────────────────────────────────────────────────
+const cselData = { contacto: [], grupo: [] }
+
+function cselPoblar(key, items, labelFn) {
+  cselData[key] = items.map(i => ({ value: i.id, label: labelFn(i) }))
+  cselRenderLista(key, '')
+}
+
+function cselRenderLista(key, filtro) {
+  const ul    = document.getElementById(`csel-${key}-list`)
+  const lower = filtro.toLowerCase()
+  const items = cselData[key].filter(i => !lower || i.label.toLowerCase().includes(lower))
+  ul.innerHTML = items.length
+    ? items.map(i => `<li onclick="cselSeleccionar('${key}',${i.value},this)" data-value="${i.value}">${i.label}</li>`).join('')
+    : '<li class="csel-empty">Sin resultados</li>'
+}
+
+function cselFiltrar(key, texto) { cselRenderLista(key, texto) }
+
+function cselToggle(key) {
+  const drop = document.getElementById(`csel-${key}-drop`)
+  const btn  = drop.previousElementSibling
+  const abierto = drop.style.display !== 'none'
+  cselCerrarTodos()
+  if (!abierto) {
+    drop.style.display = ''
+    btn.classList.add('open')
+    drop.querySelector('.csel-search').value = ''
+    cselRenderLista(key, '')
+    drop.querySelector('.csel-search').focus()
+  }
+}
+
+function cselSeleccionar(key, value, li) {
+  document.getElementById(`dest-${key}`).value = value
+  document.getElementById(`csel-${key}-label`).textContent = li.textContent
+  document.getElementById(`csel-${key}-label`).classList.remove('csel-placeholder')
+  document.getElementById(`csel-${key}-drop`).style.display = 'none'
+  document.getElementById(`csel-${key}-drop`).previousElementSibling.classList.remove('open')
+}
+
+function cselCerrarTodos() {
+  ['contacto','grupo'].forEach(key => {
+    const drop = document.getElementById(`csel-${key}-drop`)
+    if (drop) { drop.style.display = 'none'; drop.previousElementSibling.classList.remove('open') }
+  })
+}
+
+function cselSeleccionarValor(key, value, label) {
+  document.getElementById(`dest-${key}`).value = value
+  const lbl = document.getElementById(`csel-${key}-label`)
+  lbl.textContent = label
+  lbl.classList.remove('csel-placeholder')
+}
+
+function cselReset(key, placeholder) {
+  document.getElementById(`dest-${key}`).value = ''
+  const lbl = document.getElementById(`csel-${key}-label`)
+  lbl.textContent = placeholder
+  lbl.classList.add('csel-placeholder')
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.csel-wrap')) cselCerrarTodos()
+})
+
+// ── Repetición ──────────────────────────────────────────────────────────────
+function toggleRepFin() {
+  const v = document.getElementById('a-repeticion').value
+  document.getElementById('grpRepFin').style.display = v !== '0' ? '' : 'none'
+}
+
+// ── Plantilla → cargar texto ─────────────────────────────────────────────────
+function cargarTextoPlantilla() {
+  const sel = document.getElementById('a-plantilla')
+  const opt = sel.options[sel.selectedIndex]
+  if (opt && opt.dataset.texto) document.getElementById('a-mensaje').value = opt.dataset.texto
+}
+
+// ── Alertas dinámicas ────────────────────────────────────────────────────────
+let alertaCount = 0
+function agregarAlerta(datos) {
+  alertaCount++
+  const id = 'alerta_' + alertaCount
+  const tipo  = datos?.tipo  || 1
+  const valor = datos?.valor || '1'
+  const desc  = datos?.descripcion || ''
+  const prio  = datos?.prioridad  || 2
+
+  const div = document.createElement('div')
+  div.className = 'alerta-row'
+  div.id = id
+  div.innerHTML = `
+    <select onchange="actualizarPlaceholderAlerta(this)" title="Tipo de alerta">
+      <option value="0" ${tipo==0?'selected':''}>Al momento del evento</option>
+      <option value="1" ${tipo==1?'selected':''}>Días antes</option>
+      <option value="2" ${tipo==2?'selected':''}>Horas antes</option>
+      <option value="3" ${tipo==3?'selected':''}>Minutos antes</option>
+      <option value="4" ${tipo==4?'selected':''}>Hora fija del día</option>
+    </select>
+    <input type="text" placeholder="${tipo==4?'HH:MM':'1'}" value="${valor}" style="max-width:80px;${tipo==0?'display:none':''}" title="Valor de la alerta">
+    <input type="text" placeholder="Descripción (opcional)" value="${desc}" style="flex:2" title="Descripción de la alerta">
+    <select title="Prioridad">
+      <option value="1" ${prio==1?'selected':''}>Baja</option>
+      <option value="2" ${prio==2?'selected':''}>Normal</option>
+      <option value="3" ${prio==3?'selected':''}>Alta</option>
+    </select>
+    <button class="btn btn-xs btn-outline-danger btn-quitar" onclick="document.getElementById('${id}').remove()" title="Quitar regla">
+      <i class="fas fa-times"></i>
+    </button>`
+  document.getElementById('alertasContainer').appendChild(div)
+}
+
+function actualizarPlaceholderAlerta(sel) {
+  const inp = sel.parentElement.querySelector('input[type="text"]')
+  if (sel.value == 0) {
+    inp.style.display = 'none'
+    inp.value = ''
+  } else {
+    inp.style.display = ''
+    inp.placeholder = sel.value == 4 ? 'HH:MM' : '1'
+  }
+}
+
+// ── Guardar evento ───────────────────────────────────────────────────────────
+async function guardarEvento() {
+  const titulo = document.getElementById('a-titulo').value.trim()
+  const fecha  = document.getElementById('a-fecha').value
+  const hora   = document.getElementById('a-hora').value || '00:00'
+  if (!titulo) { Alerta.error('El título es requerido'); return }
+  if (!fecha)  { Alerta.error('La fecha del evento es requerida'); return }
+
+  const tipoDest = document.querySelector('input[name="a-tipo-dest"]:checked').value
+  const contacto_id   = tipoDest==='contacto' ? document.getElementById('dest-contacto').value || null : null
+  const grupo_id      = tipoDest==='grupo'    ? document.getElementById('dest-grupo').value    || null : null
+  const destino_libre = tipoDest==='libre'    ? document.getElementById('dest-libre').value.trim() || null : null
+
+  if (!contacto_id && !grupo_id && !destino_libre) {
+    Alerta.error('Debes seleccionar un contacto, grupo o ingresar un número'); return
+  }
+
+  const alertas = []
+  document.querySelectorAll('.alerta-row').forEach(row => {
+    const sels = row.querySelectorAll('select')
+    const inps = row.querySelectorAll('input[type="text"]')
+    const tipo  = parseInt(sels[0].value)
+    const valor = inps[0].value.trim()
+    const desc  = inps[1].value.trim()
+    const prio  = parseInt(sels[1].value)
+    if (tipo === 0 || valor) alertas.push({ tipo, valor: valor || '0', descripcion: desc, prioridad: prio })
+  })
+
+  if (!alertas.length) { Alerta.error('Agrega al menos una regla de notificación'); return }
+
+  const body = {
+    titulo,
+    descripcion:    null,
+    fecha_evento:   `${fecha}T${hora}:00`,
+    contacto_id, grupo_id, destino_libre,
+    plantilla_id:   document.getElementById('a-plantilla').value || null,
+    mensaje_texto:  document.getElementById('a-mensaje').value.trim() || null,
+    repeticion:     parseInt(document.getElementById('a-repeticion').value),
+    repeticion_fin: document.getElementById('a-rep-fin').value || null,
+    estado:         parseInt(document.getElementById('a-estado').value),
+    alertas
+  }
+
+  const id = document.getElementById('a-id').value
+  try {
+    const resp = await Auth.fetch(
+      CONFIG.BASE_URL + '/api/calendario' + (id ? `/${id}` : ''),
+      { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) }
+    )
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    Modal.hide('modalAlerta')
+    await Alerta.exito(id ? 'Evento actualizado' : 'Evento creado y mensajes programados')
+    cargarMes(vistaYear, vistaMes)
+  } catch(e) {
+    Alerta.error(e.message)
+  }
+}
+
+// ── Eliminar/cancelar evento ─────────────────────────────────────────────────
+async function eliminarEvento() {
+  const id = document.getElementById('a-id').value
+  if (!id) return
+  const res = await Alerta.confirmar('¿Cancelar evento?', 'Los mensajes pendientes serán cancelados.', 'warning')
+  if (!res.isConfirmed) return
+  try {
+    const resp = await Auth.fetch(`${CONFIG.BASE_URL}/api/calendario/${id}`, { method: 'DELETE' })
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    Modal.hide('modalAlerta')
+    await Alerta.exito('Evento cancelado')
+    cargarMes(vistaYear, vistaMes)
+  } catch(e) {
+    Alerta.error(e.message)
+  }
+}
+
+// ── Ver mensajes del evento ──────────────────────────────────────────────────
+async function verMensajes(id, titulo) {
+  document.getElementById('modalEventoTitulo').textContent = titulo
+  document.getElementById('cuerpoMsgEvento').innerHTML =
+    '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x" style="color:#00d4ff"></i></div>'
+  Modal.show('modalMensajes')
+  try {
+    const resp = await Auth.fetch(`${CONFIG.BASE_URL}/api/calendario/${id}/mensajes`)
+    const data = await resp.json()
+    if (!data.ok) { document.getElementById('cuerpoMsgEvento').innerHTML = '<div class="alert alert-danger">'+data.error+'</div>'; return }
+
+    if (!data.datos.length) {
+      document.getElementById('cuerpoMsgEvento').innerHTML = '<div class="text-center py-4" style="color:#6b7f99">Sin mensajes generados aún</div>'
+      return
+    }
+
+    document.getElementById('cuerpoMsgEvento').innerHTML = `
+      <table class="table table-sm table-hover w-100" style="font-size:13px">
+        <thead>
+          <tr><th>Destino</th><th>Alerta</th><th>Programado</th><th>Enviado</th><th>Estado</th></tr>
+        </thead>
+        <tbody>
+          ${data.datos.map(m => {
+            const dest = m.grupo_nombre
+              ? `<i class="fab fa-whatsapp mr-1" style="color:#25D366"></i>${m.grupo_nombre}`
+              : m.contacto && m.contacto.trim()
+                ? `<i class="fas fa-user mr-1"></i>${m.contacto.trim()}`
+                : `<i class="fas fa-mobile-alt mr-1"></i>${m.destino}`
+            return `<tr>
+            <td>${dest}</td>
+            <td style="font-size:11px;color:#6b7f99">${m.alerta_desc || '—'}</td>
+            <td style="font-size:11px">${fechaLocal(m.fecha_programada)}</td>
+            <td style="font-size:11px">${fechaLocal(m.fecha_envio)}</td>
+            <td>${badgeEstado(m.estado)}</td>
+          </tr>`
+          }).join('')}
+        </tbody>
+      </table>`
+  } catch(e) {
+    document.getElementById('cuerpoMsgEvento').innerHTML = '<div class="alert alert-danger">'+e.message+'</div>'
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+const _verTodoGuardado = localStorage.getItem('cal_ver_todo') !== '0'
+document.getElementById('chkVerTodo').checked = _verTodoGuardado
+Promise.all([cargarAuxiliares(), cargarMes(vistaYear, vistaMes)])
+</script>
+</body>
+</html>

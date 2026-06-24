@@ -1,0 +1,17 @@
+services:
+  bot:
+    build: .
+    container_name: bot-whatsapp
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TZ=America/Guayaquil
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src/auth:/app/src/auth
+      - ./src/admin:/app/src/admin
+      - ./grupos.txt:/app/grupos.txt
+      - ./log_errores:/app/log_errores
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

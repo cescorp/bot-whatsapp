@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlertaWTS - Contactos</title>
+  <link rel="stylesheet" href="plugins/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+  <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
+  <link rel="stylesheet" href="assets/css/custom.css">
+</head>
+<body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
+<div class="wrapper">
+
+  <nav class="main-header navbar navbar-expand navbar-dark">
+    <ul class="navbar-nav">
+      <li class="nav-item"><a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a></li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#"><i class="fas fa-user-circle mr-1"></i><span id="nav-usuario"></span></a>
+        <div class="dropdown-menu dropdown-menu-right" style="background:#1a2234;border:1px solid rgba(0,212,255,.15)">
+          <span class="dropdown-item-text" style="color:#6b7f99;font-size:12px" id="nav-perfil"></span>
+          <div class="dropdown-divider" style="border-color:rgba(0,212,255,.1)"></div>
+          <a class="dropdown-item" href="#" onclick="Auth.cerrar();return false" style="color:#8ba3c7"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar sesion</a>
+        </div>
+      </li>
+    </ul>
+  </nav>
+
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="index.html" class="brand-link"><span class="brand-text font-weight-bold">AlertaWTS</span></a>
+    <div class="sidebar"><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+      <li class="nav-item"><a href="index.html" class="nav-link"><i class="nav-icon fas fa-tachometer-alt"></i><p>Dashboard</p></a></li>
+      <li class="nav-item"><a href="contactos.html" class="nav-link active"><i class="nav-icon fas fa-users"></i><p>Contactos</p></a></li>
+      <li class="nav-item"><a href="mensajes.html" class="nav-link"><i class="nav-icon fas fa-comment-dots"></i><p>Mensajes</p></a></li>
+      <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
+      <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
+      <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+    </ul></nav></div>
+  </aside>
+
+  <div class="content-wrapper">
+    <div class="content-header">
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <h1><i class="fas fa-users mr-2" style="color:#00d4ff"></i>Contactos</h1>
+        <div>
+          <button class="btn btn-secondary btn-sm mr-2" onclick="abrirImportar()" title="Importar contactos desde archivo VCF o CSV">
+            <i class="fas fa-file-import mr-1"></i>Importar contactos vcf/csv
+          </button>
+          <button class="btn btn-secondary btn-sm mr-2" onclick="sincronizarGrupos()" title="Sincronizar lista de grupos desde WhatsApp">
+            <i class="fas fa-sync-alt mr-1"></i>Sincronizar grupos
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="abrirNuevo()" title="Crear nuevo contacto">
+            <i class="fas fa-plus mr-1"></i>Nuevo contacto
+          </button>
+        </div>
+      </div>
+    </div>
+    <section class="content"><div class="container-fluid">
+      <div class="card">
+        <div class="card-body">
+          <table id="tablaContactos" class="table table-hover table-sm w-100">
+            <thead>
+              <tr><th>ID</th><th>Nombres</th><th>Apellidos</th><th>Celular</th><th>Correo</th><th>WhatsApp</th><th>Grupo destino</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="tbodyContactos"></tbody>
+          </table>
+        </div>
+      </div>
+    </div></section>
+  </div>
+
+  <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
+    <strong>AlertaWTS</strong> v1.0
+  </footer>
+</div>
+
+<!-- Modal Importar -->
+<div class="modal" id="modalImportar" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-file-import mr-2" style="color:#00d4ff"></i>Importar Contactos</h5>
+        <button type="button" class="close" onclick="Modal.hide('modalImportar')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+
+      <!-- PASO 1: Formulario -->
+      <div class="modal-body" id="importarPaso1">
+        <div class="form-group">
+          <label>Archivo <span style="color:#dc3545">*</span></label>
+          <div style="border:2px dashed rgba(0,212,255,.3);border-radius:6px;padding:20px;text-align:center;cursor:pointer" onclick="document.getElementById('importarArchivo').click()">
+            <i class="fas fa-cloud-upload-alt fa-2x mb-2" style="color:#00d4ff"></i>
+            <div id="importarNombreArchivo" style="color:#8ba3c7;font-size:13px">Haz clic para seleccionar un archivo .vcf o .csv</div>
+          </div>
+          <input type="file" id="importarArchivo" accept=".vcf,.csv" style="display:none" onchange="seleccionarArchivo(this)">
+        </div>
+        <div class="form-group mb-0">
+          <label>¿Qué hacer con contactos duplicados? <small style="color:#6b7f99">(mismo número de celular)</small></label>
+          <div style="display:flex;gap:16px;margin-top:8px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#b0c4de;font-size:14px">
+              <input type="radio" name="duplicados" id="dupIgnorar" value="ignorar" checked
+                style="accent-color:#00d4ff;width:16px;height:16px">
+              Ignorar — conservar datos actuales
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#b0c4de;font-size:14px">
+              <input type="radio" name="duplicados" id="dupActualizar" value="actualizar"
+                style="accent-color:#00d4ff;width:16px;height:16px">
+              Actualizar — sobreescribir con datos del archivo
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- PASO 2: Cargando -->
+      <div class="modal-body" id="importarPaso2" style="display:none;text-align:center;padding:40px">
+        <i class="fas fa-spinner fa-spin fa-3x mb-3" style="color:#00d4ff"></i>
+        <div style="color:#b0c4de;font-size:15px;margin-top:12px">Procesando archivo...</div>
+        <div style="color:#6b7f99;font-size:12px;margin-top:6px">Por favor espera, no cierres esta ventana</div>
+      </div>
+
+      <!-- PASO 3: Resultado -->
+      <div class="modal-body" id="importarPaso3" style="display:none">
+        <div style="text-align:center;margin-bottom:20px">
+          <i class="fas fa-check-circle fa-3x" style="color:#28a745"></i>
+          <div style="color:#c8d8f0;font-size:16px;font-weight:600;margin-top:10px">Archivo Procesado Correctamente</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="importarStats"></div>
+      </div>
+
+      <div class="modal-footer" id="importarFooter">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalImportar')">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="btnEjecutarImport" onclick="ejecutarImportacion()" title="Iniciar importacion del archivo seleccionado">
+          <i class="fas fa-file-import mr-1"></i>Importar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Contacto -->
+<div class="modal" id="modalContacto" tabindex="-1" data-backdrop="static">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitulo">Nuevo Contacto</h5>
+        <button type="button" class="close" onclick="Modal.hide('modalContacto')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="c-id">
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Nombres <span style="color:#dc3545">*</span></label>
+            <input type="text" class="form-control" id="c-nombres" title="Nombres del contacto">
+          </div>
+          <div class="form-group col-md-6" id="grpApellidos">
+            <label>Apellidos</label>
+            <input type="text" class="form-control" id="c-apellidos" title="Apellidos del contacto">
+          </div>
+        </div>
+        <div class="form-group" id="grpCelular">
+          <label>Celular <span style="color:#dc3545" id="celularReq">*</span></label>
+          <input type="text" class="form-control" id="c-celular" placeholder="593987654321" title="Celular con codigo de pais, ej: 593987654321">
+        </div>
+        <div class="form-group" id="grpCorreo">
+          <label>Correo</label>
+          <input type="email" class="form-control" id="c-correo" title="Correo electronico del contacto">
+        </div>
+        <div class="form-group">
+          <label title="Grupo de WhatsApp al que se enviaran los mensajes en lugar del celular individual">
+            <i class="fab fa-whatsapp mr-1" style="color:#25D366"></i>Grupo WhatsApp destino
+            <small style="color:#6b7f99;font-size:11px">(opcional — al seleccionar, los mensajes van al grupo)</small>
+          </label>
+          <select class="form-control" id="c-grupo" title="Grupo de WhatsApp destino para los mensajes de este contacto">
+            <option value="">— Sin grupo (enviar al celular) —</option>
+          </select>
+          <small id="c-grupo-aviso" style="color:#ffc107;display:none">
+            <i class="fas fa-exclamation-triangle mr-1"></i>Bot desconectado — mostrando grupos guardados
+          </small>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Permite WhatsApp</label>
+            <select class="form-control" id="c-whatsapp" title="Indica si el contacto acepta mensajes por WhatsApp">
+              <option value="1">Si</option>
+              <option value="0">No</option>
+            </select>
+          </div>
+          <div class="form-group col-md-6" id="grpEstado" style="display:none">
+            <label>Estado</label>
+            <select class="form-control" id="c-estado" title="Estado del contacto en el sistema">
+              <option value="1">Activo</option>
+              <option value="0">Inactivo</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalContacto')">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="guardarContacto()" title="Guardar cambios del contacto">
+          <i class="fas fa-save mr-1"></i>Guardar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/popper/popper.min.js"></script>
+<script src="plugins/bootstrap/js/bootstrap.min.js"></script>
+<script src="plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="adminlte/js/adminlte.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+let tabla
+
+// ── Parsers VCF / CSV (frontend) ──────────────────────────────
+function parsearVCF(texto) {
+  const contactos = []
+  // Eliminar líneas de PHOTO (pueden ser enormes en base64)
+  const limpio = texto.replace(/^PHOTO[^\n]*\n(\s[^\n]*\n)*/gm, '')
+  const bloques = limpio.split(/BEGIN:VCARD/gi).filter(b => b.trim())
+  for (const bloque of bloques) {
+    const lineas = bloque.split(/\r?\n/)
+    let nombres = '', apellidos = '', celular = '', correo = ''
+    for (const l of lineas) {
+      if (/^FN:/i.test(l)) {
+        const fn = l.replace(/^FN:/i, '').trim()
+        const p = fn.split(' ')
+        nombres = p[0] || ''; apellidos = p.slice(1).join(' ') || ''
+      }
+      if (/^N:/i.test(l) && !nombres) {
+        const p = l.replace(/^N:/i, '').split(';')
+        apellidos = p[0]?.trim() || ''; nombres = p[1]?.trim() || ''
+      }
+      if (/^TEL/i.test(l) && !celular) {
+        const t = l.split(':').slice(1).join(':').trim().replace(/\D/g, '')
+        if (t) celular = t
+      }
+      if (/^EMAIL/i.test(l) && !correo) correo = l.split(':').slice(1).join(':').trim()
+    }
+    if (nombres && celular) contactos.push({ nombres, apellidos, celular, correo: correo || null })
+  }
+  return contactos
+}
+
+function parsearCSV(texto) {
+  const lineas = texto.split(/\r?\n/).filter(l => l.trim())
+  if (lineas.length < 2) return []
+  const cab = lineas[0].toLowerCase().split(',').map(c => c.trim().replace(/"/g, ''))
+  const idx = keys => cab.findIndex(c => keys.some(k => c.includes(k)))
+  const iNom  = idx(['nombre','name','first','given'])
+  const iApe  = idx(['apellido','last','surname','family'])
+  const iTel  = idx(['celular','phone','tel','movil','mobile','cel'])
+  const iMail = idx(['correo','email','mail'])
+  const contactos = []
+  for (let i = 1; i < lineas.length; i++) {
+    const cols    = lineas[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''))
+    const celular = (iTel >= 0 ? cols[iTel] : '').replace(/\D/g, '')
+    const nombres = iNom >= 0 ? cols[iNom] : cols[0]
+    if (!nombres || !celular) continue
+    contactos.push({ nombres, apellidos: iApe >= 0 ? cols[iApe] || '' : '', celular, correo: iMail >= 0 ? cols[iMail] || null : null })
+  }
+  return contactos
+}
+
+// ── Importar contactos ─────────────────────────────────────────
+function abrirImportar() {
+  document.getElementById('importarArchivo').value = ''
+  document.getElementById('importarNombreArchivo').textContent = 'Haz clic para seleccionar un archivo .vcf o .csv'
+  document.getElementById('dupIgnorar').checked = true
+  document.getElementById('importarPaso1').style.display = ''
+  document.getElementById('importarPaso2').style.display = 'none'
+  document.getElementById('importarPaso3').style.display = 'none'
+  document.getElementById('importarFooter').style.display = ''
+  document.getElementById('btnEjecutarImport').style.display = ''
+  Modal.show('modalImportar')
+}
+
+function seleccionarArchivo(input) {
+  const f = input.files[0]
+  if (!f) return
+  document.getElementById('importarNombreArchivo').innerHTML =
+    '<i class="fas fa-file mr-1" style="color:#00d4ff"></i>' + f.name +
+    ' <small style="color:#6b7f99">(' + (f.size / 1024).toFixed(1) + ' KB)</small>'
+}
+
+async function ejecutarImportacion() {
+  const input = document.getElementById('importarArchivo')
+  if (!input.files[0]) { alert('Selecciona un archivo primero'); return }
+
+  const archivo = input.files[0]
+  const tipo    = archivo.name.toLowerCase().endsWith('.csv') ? 'csv' : 'vcf'
+  const duplicados = document.querySelector('input[name="duplicados"]:checked').value
+
+  // Mostrar loading
+  document.getElementById('importarPaso1').style.display = 'none'
+  document.getElementById('importarPaso2').style.display = ''
+  document.getElementById('importarFooter').style.display = 'none'
+
+  function mostrarErrorImport(msg) {
+    logFrontendError('importar contactos', new Error(msg))
+    document.getElementById('importarPaso2').style.display = 'none'
+    document.getElementById('importarPaso3').style.display = ''
+    document.getElementById('importarStats').innerHTML = `
+      <div style="grid-column:span 2;background:#0d1526;border:1px solid rgba(220,53,69,.4);border-radius:6px;padding:16px">
+        <div style="color:#dc3545;font-size:14px;font-weight:600;margin-bottom:8px"><i class="fas fa-exclamation-triangle mr-2"></i>Error al importar</div>
+        <pre style="color:#e0a0a0;font-size:12px;white-space:pre-wrap;margin:0;word-break:break-all">${msg}</pre>
+        <div style="color:#6b7f99;font-size:11px;margin-top:8px"><i class="fas fa-file-alt mr-1"></i>Detalle guardado en log_errores/</div>
+      </div>`
+    document.getElementById('importarFooter').style.display = ''
+    document.getElementById('btnEjecutarImport').style.display = 'none'
+  }
+
+  try {
+    // Parsear el archivo en el navegador (evita límite 100kb del servidor)
+    const textoArchivo = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload  = e => resolve(e.target.result)
+      reader.onerror = () => reject(new Error('Error al leer el archivo'))
+      reader.readAsText(archivo, 'UTF-8')
+    })
+
+    const contactos = tipo === 'csv' ? parsearCSV(textoArchivo) : parsearVCF(textoArchivo)
+    if (!contactos.length) { mostrarErrorImport('No se encontraron contactos válidos en el archivo.\nSe requiere al menos nombre y celular.'); return }
+
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/contactos/importar', {
+      method: 'POST',
+      body: JSON.stringify({ contactos, duplicados })
+    })
+
+    const texto = await resp.text()
+    let data
+    try {
+      data = JSON.parse(texto)
+    } catch (_) {
+      mostrarErrorImport('HTTP ' + resp.status + ' — El servidor devolvió HTML en vez de JSON.\n\n' + texto.substring(0, 600))
+      return
+    }
+
+    document.getElementById('importarPaso2').style.display = 'none'
+
+    if (!data.ok) { mostrarErrorImport(data.error); return }
+
+    // Mostrar resultado
+    document.getElementById('importarStats').innerHTML = `
+      <div style="background:#0d1526;border:1px solid rgba(0,212,255,.2);border-radius:6px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#00d4ff">${data.total}</div>
+        <div style="color:#8ba3c7;font-size:12px">Total en archivo</div>
+      </div>
+      <div style="background:#0d1526;border:1px solid rgba(40,167,69,.3);border-radius:6px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#28a745">${data.insertados}</div>
+        <div style="color:#8ba3c7;font-size:12px">Insertados</div>
+      </div>
+      <div style="background:#0d1526;border:1px solid rgba(23,162,184,.3);border-radius:6px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#17a2b8">${data.actualizados}</div>
+        <div style="color:#8ba3c7;font-size:12px">Actualizados</div>
+      </div>
+      <div style="background:#0d1526;border:1px solid rgba(108,117,125,.3);border-radius:6px;padding:14px;text-align:center">
+        <div style="font-size:26px;font-weight:700;color:#6c757d">${data.omitidos}</div>
+        <div style="color:#8ba3c7;font-size:12px">Omitidos</div>
+      </div>
+      ${data.errores > 0 ? `
+      <div style="background:#0d1526;border:1px solid rgba(220,53,69,.3);border-radius:6px;padding:14px;text-align:center;grid-column:span 2">
+        <div style="font-size:26px;font-weight:700;color:#dc3545">${data.errores}</div>
+        <div style="color:#8ba3c7;font-size:12px">Con errores — ver log_errores/</div>
+      </div>` : ''}
+    `
+    document.getElementById('importarPaso3').style.display = ''
+    document.getElementById('importarFooter').style.display = ''
+    document.getElementById('btnEjecutarImport').style.display = 'none'
+    cargarContactos()
+  } catch (err) {
+    mostrarErrorImport(err.message || String(err))
+  }
+}
+
+// ── Mostrar/ocultar campos según grupo seleccionado ───────────
+function actualizarCamposPorGrupo() {
+  const tieneGrupo = document.getElementById('c-grupo').value !== ''
+  document.getElementById('grpApellidos').style.display = tieneGrupo ? 'none' : ''
+  document.getElementById('grpCelular').style.display   = tieneGrupo ? 'none' : ''
+  document.getElementById('grpCorreo').style.display    = tieneGrupo ? 'none' : ''
+}
+
+// ── Cargar grupos en el combo ──────────────────────────────────
+async function cargarComboGrupos(grupoSeleccionado) {
+  const sel = document.getElementById('c-grupo')
+  const aviso = document.getElementById('c-grupo-aviso')
+  sel.innerHTML = '<option value="">Cargando grupos...</option>'
+  sel.disabled = true
+  aviso.style.display = 'none'
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/grupos')
+    const data = await resp.json()
+    sel.innerHTML = '<option value="">— Sin grupo (enviar al celular) —</option>'
+    if (data.ok && data.datos.length) {
+      data.datos.forEach(g => {
+        const opt = document.createElement('option')
+        opt.value = g.id
+        opt.textContent = g.nombre
+        opt.title = g.jid
+        if (grupoSeleccionado && grupoSeleccionado == g.id) opt.selected = true
+        sel.appendChild(opt)
+      })
+    } else if (!data.ok) {
+      aviso.style.display = ''
+    }
+  } catch (e) {
+    sel.innerHTML = '<option value="">Error al cargar grupos</option>'
+  }
+  sel.disabled = false
+  actualizarCamposPorGrupo()
+  sel.addEventListener('change', actualizarCamposPorGrupo)
+}
+
+// ── Sincronización manual desde botón ─────────────────────────
+async function sincronizarGrupos() {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/grupos/sync', { method: 'POST' })
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    Alerta.exito(data.total + ' grupos sincronizados')
+  } catch (err) {
+    Alerta.error(err.message)
+  }
+}
+
+// ── Abrir modal NUEVO ──────────────────────────────────────────
+function abrirNuevo() {
+  document.getElementById('c-id').value = ''
+  document.getElementById('c-nombres').value = ''
+  document.getElementById('c-apellidos').value = ''
+  document.getElementById('c-celular').value = ''
+  document.getElementById('c-correo').value = ''
+  document.getElementById('c-whatsapp').value = '1'
+  document.getElementById('c-estado').value = '1'
+  document.getElementById('grpEstado').style.display = 'none'
+  document.getElementById('modalTitulo').textContent = 'Nuevo Contacto'
+  Modal.show('modalContacto')
+  cargarComboGrupos(null)
+}
+
+// ── Abrir modal EDITAR ─────────────────────────────────────────
+async function abrirEditar(id) {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/contactos/' + id)
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    const c = data.dato
+    document.getElementById('c-id').value = c.id
+    document.getElementById('c-nombres').value = c.nombres
+    document.getElementById('c-apellidos').value = c.apellidos || ''
+    document.getElementById('c-celular').value = c.celular || ''
+    document.getElementById('c-correo').value = c.correo || ''
+    document.getElementById('c-whatsapp').value = c.permite_whatsapp
+    document.getElementById('c-estado').value = c.estado
+    document.getElementById('grpEstado').style.display = ''
+    document.getElementById('modalTitulo').textContent = 'Editar Contacto — ' + c.nombres + ' ' + (c.apellidos || '')
+    Modal.show('modalContacto')
+    cargarComboGrupos(c.grupo_id)
+  } catch (err) {
+    Alerta.error('Error al cargar el contacto: ' + err.message)
+  }
+}
+
+// ── Eliminar contacto ──────────────────────────────────────────
+async function eliminarContacto(id, nombre) {
+  const res = await Alerta.confirmar(
+    '¿Eliminar contacto?',
+    `Se inactivará a ${nombre}. No se eliminan sus mensajes históricos.`,
+    'warning'
+  )
+  if (!res.isConfirmed) return
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/contactos/' + id, { method: 'DELETE' })
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    await Alerta.exito('Contacto eliminado')
+    cargarContactos()
+  } catch (err) {
+    Alerta.error(err.message)
+  }
+}
+
+// ── Guardar (crear o editar) ───────────────────────────────────
+async function guardarContacto() {
+  const id      = document.getElementById('c-id').value
+  const nombres = document.getElementById('c-nombres').value.trim()
+  const grupoId = document.getElementById('c-grupo').value || null
+  const celular = document.getElementById('c-celular').value.trim()
+  if (!nombres)              { Alerta.error('El nombre es requerido'); return }
+  if (!grupoId && !celular)  { Alerta.error('El celular es requerido cuando no hay grupo seleccionado'); return }
+
+  const cuerpo = {
+    nombres,
+    apellidos:        document.getElementById('c-apellidos').value.trim(),
+    celular,
+    correo:           document.getElementById('c-correo').value.trim() || null,
+    permite_whatsapp: document.getElementById('c-whatsapp').value,
+    estado:           document.getElementById('c-estado').value,
+    grupo_id:         grupoId ? parseInt(grupoId) : null,
+  }
+
+  try {
+    const resp = await Auth.fetch(
+      CONFIG.BASE_URL + '/api/contactos' + (id ? '/' + id : ''),
+      { method: id ? 'PUT' : 'POST', body: JSON.stringify(cuerpo) }
+    )
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+    Modal.hide('modalContacto')
+    await Alerta.exito(id ? 'Contacto actualizado' : 'Contacto creado')
+    cargarContactos()
+  } catch (err) {
+    Alerta.error(err.message)
+  }
+}
+
+// ── Cargar tabla ───────────────────────────────────────────────
+async function cargarContactos() {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/contactos')
+    const data = await resp.json()
+    if (!data.ok) { Alerta.error(data.error); return }
+
+    if (tabla) { tabla.destroy(); tabla = null }
+
+    document.getElementById('tbodyContactos').innerHTML = data.datos.map(c => {
+      const nombreCompleto = (c.nombres + ' ' + (c.apellidos || '')).trim()
+      const grupoBadge = c.grupo_nombre
+        ? `<span class="badge badge-info" title="${c.grupo_jid || ''}" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap;vertical-align:middle">
+             <i class="fab fa-whatsapp mr-1"></i>${c.grupo_nombre}
+           </span>`
+        : '<span style="color:#4a6080;font-size:11px">—</span>'
+      return `
+        <tr>
+          <td>${c.id}</td>
+          <td>${c.nombres}</td>
+          <td>${c.apellidos || ''}</td>
+          <td><code style="color:#00d4ff">${c.celular}</code></td>
+          <td>${c.correo || '-'}</td>
+          <td>${c.permite_whatsapp == 1 ? '<span class="badge badge-success">Si</span>' : '<span class="badge badge-secondary">No</span>'}</td>
+          <td>${grupoBadge}</td>
+          <td>${badgeActivo(c.estado)}</td>
+          <td>
+            <button class="btn btn-xs btn-info" onclick="abrirEditar(${c.id})" title="Editar a ${nombreCompleto}">
+              <i class="fas fa-edit"></i>
+            </button>
+            <button class="btn btn-xs btn-danger" onclick="eliminarContacto(${c.id}, '${nombreCompleto.replace(/'/g, "\\'")}')" title="Eliminar a ${nombreCompleto}">
+              <i class="fas fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `
+    }).join('')
+
+    tabla = $('#tablaContactos').DataTable({ pageLength: 25, order: [[1, 'asc']] })
+  } catch (err) {
+    Alerta.error('Error al cargar contactos: ' + err.message)
+  }
+}
+
+cargarContactos()
+</script>
+</body>
+</html>

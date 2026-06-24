@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlertaWTS - Mensajes</title>
+  <link rel="stylesheet" href="plugins/fontawesome-free/css/all.min.css">
+  <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
+  <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
+  <link rel="stylesheet" href="assets/css/custom.css">
+</head>
+<body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
+<div class="wrapper">
+
+  <nav class="main-header navbar navbar-expand navbar-dark">
+    <ul class="navbar-nav">
+      <li class="nav-item"><a class="nav-link" data-widget="pushmenu" href="#"><i class="fas fa-bars"></i></a></li>
+    </ul>
+    <ul class="navbar-nav ml-auto">
+      <li class="nav-item dropdown">
+        <a class="nav-link" data-toggle="dropdown" href="#"><i class="fas fa-user-circle mr-1"></i><span id="nav-usuario"></span></a>
+        <div class="dropdown-menu dropdown-menu-right" style="background:#1a2234;border:1px solid rgba(0,212,255,.15)">
+          <span class="dropdown-item-text" style="color:#6b7f99;font-size:12px" id="nav-perfil"></span>
+          <div class="dropdown-divider" style="border-color:rgba(0,212,255,.1)"></div>
+          <a class="dropdown-item" href="#" onclick="Auth.cerrar();return false" style="color:#8ba3c7"><i class="fas fa-sign-out-alt mr-2"></i>Cerrar sesion</a>
+        </div>
+      </li>
+    </ul>
+  </nav>
+
+  <aside class="main-sidebar sidebar-dark-primary elevation-4">
+    <a href="index.html" class="brand-link"><span class="brand-text font-weight-bold">AlertaWTS</span></a>
+    <div class="sidebar"><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu">
+      <li class="nav-item"><a href="index.html" class="nav-link"><i class="nav-icon fas fa-tachometer-alt"></i><p>Dashboard</p></a></li>
+      <li class="nav-item"><a href="contactos.html" class="nav-link"><i class="nav-icon fas fa-users"></i><p>Contactos</p></a></li>
+      <li class="nav-item"><a href="mensajes.html" class="nav-link active"><i class="nav-icon fas fa-comment-dots"></i><p>Mensajes</p></a></li>
+      <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
+      <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
+      <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+    </ul></nav></div>
+  </aside>
+
+  <div class="content-wrapper">
+    <div class="content-header">
+      <div class="container-fluid"><h1><i class="fas fa-comment-dots mr-2" style="color:#00d4ff"></i>Mensajes</h1></div>
+    </div>
+    <section class="content"><div class="container-fluid">
+
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <div class="row align-items-end">
+            <div class="col-md-2">
+              <label class="mb-1">Estado</label>
+              <select class="form-control form-control-sm" id="f-estado" title="Filtrar por estado del mensaje">
+                <option value="">Todos</option>
+                <option value="1">Pendiente</option>
+                <option value="2">Procesando</option>
+                <option value="3">Enviado</option>
+                <option value="4">Error</option>
+                <option value="5">Cancelado</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="mb-1">Desde</label>
+              <input type="datetime-local" class="form-control form-control-sm" id="f-desde" title="Fecha inicio del filtro">
+            </div>
+            <div class="col-md-3">
+              <label class="mb-1">Hasta</label>
+              <input type="datetime-local" class="form-control form-control-sm" id="f-hasta" title="Fecha fin del filtro">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-primary btn-sm btn-block" onclick="cargarMensajes()" title="Aplicar filtros de busqueda">
+                <i class="fas fa-search mr-1"></i>Buscar
+              </button>
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-secondary btn-sm btn-block" onclick="limpiarFiltros()" title="Limpiar filtros y mostrar todos">
+                <i class="fas fa-times mr-1"></i>Limpiar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body">
+          <table id="tablaMensajes" class="table table-hover table-sm w-100">
+            <thead>
+              <tr><th>ID</th><th>Contacto</th><th>Destino</th><th>Plantilla</th><th>Programado</th><th>Enviado</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody id="tbodyMensajes"></tbody>
+          </table>
+        </div>
+      </div>
+    </div></section>
+  </div>
+
+  <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
+    <strong>AlertaWTS</strong> v1.0
+  </footer>
+</div>
+
+<!-- Modal Detalle -->
+<div class="modal" id="modalDetalle" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Detalle del mensaje <span id="modalMsgId" style="color:#00d4ff"></span></h5>
+        <button type="button" class="close" onclick="Modal.hide('modalDetalle')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body" id="detalleBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalDetalle')">Cerrar</button>
+        <button type="button" class="btn btn-warning" id="btnReenviarModal" style="display:none" onclick="reenviarMensaje()" title="Marcar este mensaje para reenvio">
+          <i class="fas fa-redo mr-1"></i>Reenviar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="plugins/jquery/jquery.min.js"></script>
+<script src="plugins/popper/popper.min.js"></script>
+<script src="plugins/bootstrap/js/bootstrap.min.js"></script>
+<script src="plugins/datatables/jquery.dataTables.min.js"></script>
+<script src="plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+<script src="adminlte/js/adminlte.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/app.js"></script>
+<script>
+let tabla
+let idMsgActual
+
+// ── Ver detalle del mensaje ────────────────────────────────────
+async function verDetalle(id) {
+  idMsgActual = id
+  document.getElementById('modalMsgId').textContent = '#' + id
+  document.getElementById('detalleBody').innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin fa-2x" style="color:#00d4ff"></i></div>'
+  document.getElementById('btnReenviarModal').style.display = 'none'
+  Modal.show('modalDetalle')
+
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/mensajes/' + id)
+    const data = await resp.json()
+    if (!data.ok) { document.getElementById('detalleBody').innerHTML = '<div class="alert alert-danger">' + data.error + '</div>'; return }
+    const { mensaje, log } = data
+
+    document.getElementById('detalleBody').innerHTML = `
+      <div class="row mb-3">
+        <div class="col-6  text-info"><strong style="color:#00d4ff">Contacto:</strong><br>${mensaje.contacto || '-'}</div>
+        <div class="col-6"><strong style="color:#00d4ff">Destino:</strong><br><code>${mensaje.wts_mensaje_destino}</code></div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-6  text-info"><strong style="color:#00d4ff">Estado:</strong><br>${badgeEstado(mensaje.wts_mensaje_estado)}</div>
+        <div class="col-6  text-info"><strong style="color:#00d4ff">Plantilla:</strong><br>${mensaje.plantilla || '-'}</div>
+      </div>
+      <div class="row mb-3">
+        <div class="col-6 text-info"><strong style="color:#00d4ff">Programado:</strong><br>${fechaLocal(mensaje.wts_mensaje_fecha_programada)}</div>
+        <div class="col-6  text-info"><strong style="color:#00d4ff">Enviado:</strong><br>${fechaLocal(mensaje.wts_mensaje_fecha_envio)}</div>
+      </div>
+      <div class="mb-3">
+        <strong style="color:#00d4ff">Texto:</strong>
+        <pre style="background:#0d1526;color:#b0c4de;padding:10px;border-radius:4px;margin-top:4px;font-size:13px;white-space:pre-wrap">${mensaje.wts_mensaje_texto || '-'}</pre>
+      </div>
+      ${mensaje.wts_mensaje_ultimo_error ? '<div class="alert alert-danger py-2" style="font-size:12px"><i class="fas fa-exclamation-triangle mr-1"></i><strong>Error:</strong> ' + mensaje.wts_mensaje_ultimo_error + '</div>' : ''}
+      <strong style="color:#00d4ff">Log de auditoria:</strong>
+      <table class="table table-sm mt-2">
+        <thead><tr><th>Fecha</th><th>Anterior</th><th>Nuevo</th><th>Descripcion</th></tr></thead>
+        <tbody>${log.map(l => '<tr><td style="font-size:11px">' + fechaLocal(l.fecha_crea) + '</td><td>' + badgeEstado(l.wts_mensaje_log_estado_anterior) + '</td><td>' + badgeEstado(l.wts_mensaje_log_estado_nuevo) + '</td><td style="font-size:12px">' + l.wts_mensaje_log_descripcion + '</td></tr>').join('')}</tbody>
+      </table>
+    `
+    if (mensaje.wts_mensaje_estado == 4) document.getElementById('btnReenviarModal').style.display = ''
+  } catch (err) {
+    document.getElementById('detalleBody').innerHTML = '<div class="alert alert-danger">' + err.message + '</div>'
+  }
+}
+
+// ── Reenviar desde modal ───────────────────────────────────────
+async function reenviarMensaje() {
+  if (!confirm('Seguro de reenviar el mensaje #' + idMsgActual + '?')) return
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/mensajes/' + idMsgActual + '/reenviar', { method: 'PUT' })
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+    Modal.hide('modalDetalle')
+    cargarMensajes()
+  } catch (err) {
+    alert('Error: ' + err.message)
+  }
+}
+
+// ── Limpiar filtros ────────────────────────────────────────────
+function limpiarFiltros() {
+  document.getElementById('f-estado').value = ''
+  document.getElementById('f-desde').value = ''
+  document.getElementById('f-hasta').value = ''
+  cargarMensajes()
+}
+
+// ── Cargar tabla ───────────────────────────────────────────────
+async function cargarMensajes() {
+  const params = new URLSearchParams()
+  const estado = document.getElementById('f-estado').value
+  const desde  = document.getElementById('f-desde').value
+  const hasta  = document.getElementById('f-hasta').value
+  if (estado) params.append('estado', estado)
+  if (desde)  params.append('desde', desde)
+  if (hasta)  params.append('hasta', hasta)
+
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/mensajes?' + params)
+    const data = await resp.json()
+    if (!data.ok) { alert('Error: ' + data.error); return }
+
+    if (tabla) { tabla.destroy(); tabla = null }
+
+    document.getElementById('tbodyMensajes').innerHTML = data.datos.map(m => `
+      <tr>
+        <td>${m.id}</td>
+        <td>${m.contacto || '-'}</td>
+        <td><code style="color:#00d4ff;font-size:11px">${m.destino}</code></td>
+        <td>${m.plantilla || '<span style="color:#6b7f99">-</span>'}</td>
+        <td style="font-size:12px">${fechaLocal(m.fecha_programada)}</td>
+        <td style="font-size:12px">${fechaLocal(m.fecha_envio)}</td>
+        <td>${badgeEstado(m.estado)}</td>
+        <td>
+          <button class="btn btn-xs btn-info" onclick="verDetalle(${m.id})" title="Ver detalle del mensaje #${m.id}">
+            <i class="fas fa-eye"></i>
+          </button>
+          ${m.estado == 4 ? `<button class="btn btn-xs btn-warning" onclick="verDetalle(${m.id})" title="Ver y reenviar el mensaje a ${m.destino}"><i class="fas fa-redo"></i></button>` : ''}
+        </td>
+      </tr>
+    `).join('')
+
+    tabla = $('#tablaMensajes').DataTable({ pageLength: 25, order: [[4, 'desc']] })
+  } catch (err) {
+    alert('Error al cargar mensajes: ' + err.message)
+  }
+}
+
+cargarMensajes()
+</script>
+</body>
+</html>
