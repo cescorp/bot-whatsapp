@@ -132,6 +132,7 @@ router.get('/:id', async (req, res) => {
   try {
     const { rows: [cal] } = await pool.query(`
       SELECT c.*,
+             TO_CHAR(c.wts_calendario_fecha_evento, 'YYYY-MM-DD"T"HH24:MI') AS fecha_local,
              CONCAT(ct.wts_contacto_nombres,' ',ct.wts_contacto_apellidos) AS contacto_nombre,
              ct.wts_contacto_celular_principal AS contacto_celular,
              g.wts_grupo_nombre,
@@ -250,6 +251,38 @@ router.put('/:id', async (req, res) => {
   try {
     await client.query('BEGIN')
 
+    // Leer estado actual para comparar (fecha como string local, sin conversión de zona horaria)
+    const { rows: [actual] } = await client.query(`
+      SELECT TO_CHAR(wts_calendario_fecha_evento, 'YYYY-MM-DD"T"HH24:MI') AS fecha_local
+      FROM wts_calendario WHERE wts_calendario_id = $1
+    `, [req.params.id])
+    if (!actual) {
+      await client.query('ROLLBACK')
+      return res.status(404).json({ ok: false, error: 'Evento no encontrado' })
+    }
+
+    const { rows: alertasActuales } = await client.query(`
+      SELECT wts_calendario_alerta_tipo      AS tipo,
+             wts_calendario_alerta_valor     AS valor,
+             wts_calendario_alerta_prioridad AS prioridad
+      FROM wts_calendario_alerta
+      WHERE wts_calendario_id = $1 AND wts_calendario_alerta_estado = 1
+      ORDER BY wts_calendario_alerta_tipo, wts_calendario_alerta_valor
+    `, [req.params.id])
+
+    // Comparar fecha como strings para evitar desfases de zona horaria
+    const fechaCambio = !!fecha_evento &&
+      actual.fecha_local !== fecha_evento.slice(0, 16)
+
+    // Detectar si las alertas cambiaron
+    const normalizar = arr => [...arr].map(a => ({
+      tipo: parseInt(a.tipo), valor: String(a.valor), prioridad: parseInt(a.prioridad || 2)
+    })).sort((a, b) => a.tipo - b.tipo || a.valor.localeCompare(b.valor))
+
+    const alertasCambiaron = Array.isArray(alertas) &&
+      JSON.stringify(normalizar(alertas)) !== JSON.stringify(normalizar(alertasActuales))
+
+    // Actualizar el evento
     await client.query(`
       UPDATE wts_calendario SET
         wts_contacto_id              = $2,
@@ -273,24 +306,36 @@ router.put('/:id', async (req, res) => {
         estado!=null ? estado : null,
         req.usuario.email])
 
-    // Reemplazar alertas si se envían
     if (Array.isArray(alertas)) {
-      await client.query(
-        'UPDATE wts_mensaje SET wts_calendario_alerta_id = NULL WHERE wts_calendario_id = $1',
-        [req.params.id])
-      await client.query(
-        'DELETE FROM wts_calendario_alerta WHERE wts_calendario_id = $1',
-        [req.params.id])
+      if (alertasCambiaron) {
+        // Alertas cambiaron → reemplazar y dejar que el trigger regenere mensajes
+        await client.query(
+          'UPDATE wts_mensaje SET wts_calendario_alerta_id = NULL WHERE wts_calendario_id = $1',
+          [req.params.id])
+        await client.query(
+          'DELETE FROM wts_calendario_alerta WHERE wts_calendario_id = $1',
+          [req.params.id])
+        for (const a of alertas) {
+          await client.query(`
+            INSERT INTO wts_calendario_alerta
+              (wts_calendario_id, wts_calendario_alerta_tipo, wts_calendario_alerta_valor,
+               wts_calendario_alerta_descripcion, wts_calendario_alerta_prioridad,
+               wts_calendario_alerta_estado, user_crea, fecha_crea)
+            VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
+          `, [req.params.id, a.tipo, a.valor, a.descripcion||null, a.prioridad||2, req.usuario.email])
+        }
+        // El trigger cancela pendientes y crea nuevos con las alertas actualizadas
 
-      for (const a of alertas) {
+      } else if (fechaCambio) {
+        // Solo cambió la fecha → disparar el trigger con un UPDATE noop en alertas
+        // El trigger lee la nueva fecha del evento (ya actualizada arriba) y recalcula
         await client.query(`
-          INSERT INTO wts_calendario_alerta
-            (wts_calendario_id, wts_calendario_alerta_tipo, wts_calendario_alerta_valor,
-             wts_calendario_alerta_descripcion, wts_calendario_alerta_prioridad,
-             wts_calendario_alerta_estado, user_crea, fecha_crea)
-          VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
-        `, [req.params.id, a.tipo, a.valor, a.descripcion||null, a.prioridad||2, req.usuario.email])
+          UPDATE wts_calendario_alerta
+          SET wts_calendario_alerta_estado = wts_calendario_alerta_estado
+          WHERE wts_calendario_id = $1
+        `, [req.params.id])
       }
+      // Si no cambió ni fecha ni alertas: solo se actualizó el texto/título del evento
     }
 
     await client.query('COMMIT')

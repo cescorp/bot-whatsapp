@@ -597,9 +597,9 @@ async function editarEvento(id) {
 
     document.getElementById('a-id').value = id
     document.getElementById('a-titulo').value = ev.wts_calendario_titulo || ''
-    const fechaEvento = new Date(ev.wts_calendario_fecha_evento)
-    document.getElementById('a-fecha').value = fechaEvento.toISOString().slice(0,10)
-    document.getElementById('a-hora').value  = fechaEvento.toTimeString().slice(0,5)
+    const [fechaPart, horaPart] = (ev.fecha_local || '').split('T')
+    document.getElementById('a-fecha').value = fechaPart || ''
+    document.getElementById('a-hora').value  = (horaPart || '00:00').slice(0, 5)
     document.getElementById('a-estado').value = ev.wts_calendario_estado || 1
     document.getElementById('a-repeticion').value = ev.wts_calendario_repeticion || 0
     document.getElementById('a-rep-fin').value = ev.wts_calendario_repeticion_fin ? ev.wts_calendario_repeticion_fin.slice(0,10) : ''
