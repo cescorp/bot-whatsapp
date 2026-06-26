@@ -185,6 +185,7 @@ El archivo `.env` contiene las claves y contraseñas del sistema. **Si no viene 
    JWT_SECRET=TU_CLAVE_JWT_SECRETA
    JWT_EXPIRES=8h
    ```
+   ## EN POWER SHEEL PARA VERIFICAR CONTRASEÑA: docker exec bot-whatsapp printenv API_KEY
 
    ### c) Reemplazar los valores:
 
@@ -318,19 +319,19 @@ $2b$10$XyZ123abcDEF456ghiJKL.mno789pqrSTU012vwxYZ345abc678DEF9
 En el **Query Tool** de pgAdmin (conectado a `alerta_wts`), ejecutar:
 
 ```sql
-INSERT INTO wts_usuario (
-  wts_usuario_nombre,
-  wts_usuario_email,
-  wts_usuario_password,
-  wts_usuario_perfil,
-  wts_usuario_estado,
+INSERT INTO sis_usuario (
+  sis_usuario_nombre,
+  sis_usuario_email,
+  sis_usuario_clave,
+  sis_perfil_id,
+  sis_usuario_estado,
   user_crea,
   fecha_crea
 ) VALUES (
   'Administrador',
-  'TU_EMAIL@ejemplo.com',
-  '$2b$10$PEGAR_AQUI_EL_HASH_GENERADO',
-  'admin',
+  'correo@dominio.com',
+  '$2b$10$mgJY.hszPoSbtXdbVwlPpOx4mWXXUAMCn0Q9Q0yCUmYcttLq4J.0W', -- 276241
+  1,
   1,
   'INSTALACION',
   NOW()
@@ -479,6 +480,236 @@ docker ps
 Debe aparecer `bot-whatsapp` con estado `Up`.
 
 > ⚠️ **Docker Desktop debe seguir abierto.** Si se cierra Docker Desktop, el bot se detiene. Se puede configurar Docker Desktop para que inicie con Windows automáticamente en: **Settings → General → Start Docker Desktop when you sign in to your computer**.
+
+---
+
+## 3.6 — Usar la API REST para enviar mensajes
+
+La API REST permite que sistemas externos (ERP, CRM, aplicaciones propias) envíen mensajes al bot sin necesidad de entrar al panel. Todos los ejemplos usan PowerShell.
+
+### Configuración previa — API Key
+
+Cada petición debe incluir en el header el valor de `API_KEY` definido en el archivo `.env`:
+
+```
+x-api-key: TU_CLAVE_API_SECRETA
+```
+
+> ⚠️ Desde el navegador siempre dará error 401 — usar **PowerShell**, Postman o Thunder Client.
+
+---
+
+### Rutas disponibles
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/estado` | Verifica que el bot y la API estén funcionando |
+| `GET` | `/contactos` | Lista contactos activos |
+| `POST` | `/contactos` | Crea un contacto nuevo |
+| `GET` | `/plantillas` | Lista plantillas activas |
+| `POST` | `/plantillas` | Crea una plantilla nueva |
+| `POST` | `/mensajes` | Crea un mensaje en la cola de envío |
+| `GET` | `/mensajes/:id` | Consulta el estado de un mensaje |
+| `POST` | `/calendario` | Crea un evento con alertas automáticas |
+| `GET` | `/grupos` | Lista los grupos WhatsApp del número activo |
+
+---
+
+### GET `/estado`
+Verifica si el bot y la API están funcionando.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/estado" `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"}
+```
+
+**Respuesta esperada:**
+```json
+{ "ok": true, "whatsapp": "conectado", "timestamp": "2026-06-22T17:00:00.000Z" }
+```
+
+---
+
+### GET `/contactos`
+Lista todos los contactos activos.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/contactos" `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"}
+```
+
+**Respuesta esperada:**
+```json
+{
+  "ok": true,
+  "total": 2,
+  "contactos": [
+    { "id": 1, "nombres": "Juan", "apellidos": "Pérez", "celular": "593984103258",
+      "correo": null, "permite_whatsapp": 1, "estado": 1 }
+  ]
+}
+```
+
+---
+
+### POST `/contactos`
+Crea un nuevo contacto.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/contactos" -Method POST `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"; "Content-Type"="application/json"} `
+  -Body '{"nombres":"Ana","apellidos":"Gómez","celular":"593991234567","correo":"ana@ejemplo.com","permite_whatsapp":1}'
+```
+
+**Campos obligatorios:** `nombres`, `celular`
+
+**Respuesta esperada:**
+```json
+{ "ok": true, "id": 3 }
+```
+
+---
+
+### GET `/plantillas`
+Lista las plantillas de mensaje activas.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/plantillas" `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"}
+```
+
+**Respuesta esperada:**
+```json
+{
+  "ok": true,
+  "total": 1,
+  "plantillas": [
+    { "id": 1, "nombre": "Recordatorio cita", "texto": "Hola {{nombre}}, tu cita es el {{fecha_evento}}.", "tipo": 1 }
+  ]
+}
+```
+
+---
+
+### POST `/plantillas`
+Crea una nueva plantilla de mensaje. Las variables disponibles son `{{nombre}}`, `{{titulo}}`, `{{fecha_evento}}`, `{{mensaje}}`, `{{celular}}`.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/plantillas" -Method POST `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"; "Content-Type"="application/json"} `
+  -Body '{"nombre":"Recordatorio cita","texto":"Hola {{nombre}}, tienes pendiente: {{titulo}} el {{fecha_evento}}."}'
+```
+
+**Respuesta esperada:**
+```json
+{ "ok": true, "id": 1 }
+```
+
+---
+
+### POST `/mensajes`
+Crea un mensaje puntual en la cola de envío. El bot lo enviará en el próximo ciclo cuando llegue la fecha programada.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/mensajes" -Method POST `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"; "Content-Type"="application/json"} `
+  -Body '{"contacto_id":1,"destino":"593984103258","texto":"Hola, este es un aviso.","fecha_programada":"2026-06-29T09:00:00","prioridad":5}'
+```
+
+**Campos obligatorios:** `contacto_id`, `destino`, `fecha_programada`
+
+> Para enviar a un **grupo** usar el ID del grupo como `destino`: `"120363XXXXXX@g.us"` (ver GET `/grupos`)
+
+**Respuesta esperada:**
+```json
+{ "ok": true, "id": 20 }
+```
+
+---
+
+### GET `/mensajes/:id`
+Consulta el estado de un mensaje. Reemplazar `:id` por el número devuelto al crearlo.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/mensajes/20" `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"}
+```
+
+**Estados posibles:** `1` Pendiente · `3` Enviado · `4` Error · `5` Cancelado
+
+**Respuesta esperada:**
+```json
+{
+  "ok": true,
+  "mensaje": {
+    "id": 20,
+    "destino": "593984103258",
+    "texto": "Hola, este es un aviso.",
+    "estado": 3,
+    "fecha_programada": "2026-06-29T09:00:00",
+    "fecha_envio": "2026-06-29T09:00:45",
+    "intentos": 1,
+    "ultimo_error": null
+  }
+}
+```
+
+---
+
+### POST `/calendario`
+Crea un evento con alertas. Los mensajes se generan automáticamente — no es necesario crearlos uno por uno.
+
+**Tipos de alerta:**
+| `tipo` | Descripción | Ejemplo `valor` |
+|--------|-------------|-----------------|
+| `1` | Días antes del evento | `2` = 2 días antes |
+| `2` | Horas antes del evento | `3` = 3 horas antes |
+| `3` | Minutos antes del evento | `30` = 30 minutos antes |
+| `4` | Hora fija el mismo día del evento | `"08:00"` |
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/calendario" -Method POST `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"; "Content-Type"="application/json"} `
+  -Body '{
+    "contacto_id": 1,
+    "titulo": "Reunión de directorio",
+    "descripcion": "Sala de conferencias piso 3",
+    "fecha_evento": "2026-06-29T09:00:00",
+    "plantilla_id": 1,
+    "alertas": [
+      { "tipo": 1, "valor": 1, "prioridad": 5 },
+      { "tipo": 2, "valor": 2, "prioridad": 5 },
+      { "tipo": 4, "valor": "08:00", "prioridad": 3 }
+    ]
+  }'
+```
+
+**Respuesta esperada:**
+```json
+{ "ok": true, "calendario_id": 5 }
+```
+
+---
+
+### GET `/grupos`
+Lista los grupos WhatsApp del número conectado. Útil para obtener el ID de grupo al enviar mensajes grupales.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/grupos" `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"}
+```
+
+**Respuesta esperada:**
+```json
+{
+  "ok": true,
+  "total": 3,
+  "grupos": [
+    { "nombre": "Sistemas HENTEL", "id": "120363XXXXXX@g.us" },
+    { "nombre": "Familia",         "id": "120363YYYYYY@g.us" }
+  ]
+}
+```
 
 ---
 

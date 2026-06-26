@@ -8,6 +8,21 @@
   <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
   <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
   <link rel="stylesheet" href="assets/css/custom.css">
+  <style>
+    @media (max-width: 767px) {
+      /* Ocultar: ID, Apellidos, Correo, WhatsApp */
+      #tablaContactos thead th:nth-child(1),
+      #tablaContactos thead th:nth-child(3),
+      #tablaContactos thead th:nth-child(5),
+      #tablaContactos thead th:nth-child(6),
+      #tablaContactos tbody td:nth-child(1),
+      #tablaContactos tbody td:nth-child(3),
+      #tablaContactos tbody td:nth-child(5),
+      #tablaContactos tbody td:nth-child(6) { display: none !important }
+      /* Botones de acción más compactos */
+      .btn-xs { padding: 2px 6px; font-size: 11px }
+    }
+  </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
 <div class="wrapper">
@@ -60,12 +75,14 @@
     <section class="content"><div class="container-fluid">
       <div class="card">
         <div class="card-body">
+          <div class="table-responsive">
           <table id="tablaContactos" class="table table-hover table-sm w-100">
             <thead>
               <tr><th>ID</th><th>Nombres</th><th>Apellidos</th><th>Celular</th><th>Correo</th><th>WhatsApp</th><th>Grupo destino</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody id="tbodyContactos"></tbody>
           </table>
+          </div>
         </div>
       </div>
     </div></section>
@@ -140,13 +157,13 @@
 
 <!-- Modal Contacto -->
 <div class="modal" id="modalContacto" tabindex="-1" data-backdrop="static">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="modalTitulo">Nuevo Contacto</h5>
         <button type="button" class="close" onclick="Modal.hide('modalContacto')" style="color:#8ba3c7"><span>&times;</span></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="max-height:70vh;overflow-y:auto">
         <input type="hidden" id="c-id">
         <div class="form-row">
           <div class="form-group col-md-6">
