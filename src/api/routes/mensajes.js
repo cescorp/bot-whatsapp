@@ -1,5 +1,6 @@
 const { Router } = require('express')
 const { pool }   = require('../../db')
+const { estaConectado } = require('../../whatsapp')
 
 const router = Router()
 
@@ -24,7 +25,13 @@ router.post('/', async (req, res) => {
       RETURNING wts_mensaje_id AS id
     `, [contacto_id, destino, texto || null, plantilla_id || null, fecha_programada, prioridad])
 
-    res.status(201).json({ ok: true, id: rows[0].id })
+     res.status(201).json({
+      ok: true,
+      id: rows[0].id,
+      whatsapp: estaConectado() ? 'conectado' : 'desconectado',
+    })
+
+    
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message })
   }

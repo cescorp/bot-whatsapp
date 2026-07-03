@@ -1,0 +1,8 @@
+# Sesión WhatsApp — archivos generados automáticamente por Baileys
+src/auth/*.json
+
+# Logs de errores
+log_errores/
+
+# Caché de grupos WhatsApp
+/grupos.txt
