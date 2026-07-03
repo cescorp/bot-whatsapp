@@ -10,16 +10,11 @@
   <link rel="stylesheet" href="assets/css/custom.css">
   <style>
     @media (max-width: 767px) {
-      /* Ocultar: ID, Apellidos, Correo, WhatsApp */
+      /* Ocultar en móvil: ID, Apellidos */
       #tablaContactos thead th:nth-child(1),
       #tablaContactos thead th:nth-child(3),
-      #tablaContactos thead th:nth-child(5),
-      #tablaContactos thead th:nth-child(6),
       #tablaContactos tbody td:nth-child(1),
-      #tablaContactos tbody td:nth-child(3),
-      #tablaContactos tbody td:nth-child(5),
-      #tablaContactos tbody td:nth-child(6) { display: none !important }
-      /* Botones de acción más compactos */
+      #tablaContactos tbody td:nth-child(3) { display: none !important }
       .btn-xs { padding: 2px 6px; font-size: 11px }
     }
   </style>
@@ -52,6 +47,7 @@
       <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
       <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
       <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+          <li class="nav-item"><a href="cuentas.html" class="nav-link"><i class="nav-icon fas fa-mobile-alt"></i><p>Cuentas WA</p></a></li>
     </ul></nav></div>
   </aside>
 
@@ -62,9 +58,6 @@
         <div>
           <button class="btn btn-secondary btn-sm mr-2" onclick="abrirImportar()" title="Importar contactos desde archivo VCF o CSV">
             <i class="fas fa-file-import mr-1"></i>Importar contactos vcf/csv
-          </button>
-          <button class="btn btn-secondary btn-sm mr-2" onclick="sincronizarGrupos()" title="Sincronizar lista de grupos desde WhatsApp">
-            <i class="fas fa-sync-alt mr-1"></i>Sincronizar grupos
           </button>
           <button class="btn btn-primary btn-sm" onclick="abrirNuevo()" title="Crear nuevo contacto">
             <i class="fas fa-plus mr-1"></i>Nuevo contacto
@@ -78,7 +71,7 @@
           <div class="table-responsive">
           <table id="tablaContactos" class="table table-hover table-sm w-100">
             <thead>
-              <tr><th>ID</th><th>Nombres</th><th>Apellidos</th><th>Celular</th><th>Correo</th><th>WhatsApp</th><th>Grupo destino</th><th>Estado</th><th>Acciones</th></tr>
+              <tr><th>ID</th><th>Nombres</th><th>Apellidos</th><th>Celular</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody id="tbodyContactos"></tbody>
           </table>
@@ -170,32 +163,20 @@
             <label>Nombres <span style="color:#dc3545">*</span></label>
             <input type="text" class="form-control" id="c-nombres" title="Nombres del contacto">
           </div>
-          <div class="form-group col-md-6" id="grpApellidos">
+          <div class="form-group col-md-6">
             <label>Apellidos</label>
             <input type="text" class="form-control" id="c-apellidos" title="Apellidos del contacto">
           </div>
         </div>
-        <div class="form-group" id="grpCelular">
-          <label>Celular <span style="color:#dc3545" id="celularReq">*</span></label>
+        <div class="form-group">
+          <label>Celular <span style="color:#dc3545">*</span></label>
           <input type="text" class="form-control" id="c-celular" placeholder="593987654321" title="Celular con codigo de pais, ej: 593987654321">
         </div>
-        <div class="form-group" id="grpCorreo">
+        <div class="form-group d-none">
           <label>Correo</label>
           <input type="email" class="form-control" id="c-correo" title="Correo electronico del contacto">
         </div>
-        <div class="form-group">
-          <label title="Grupo de WhatsApp al que se enviaran los mensajes en lugar del celular individual">
-            <i class="fab fa-whatsapp mr-1" style="color:#25D366"></i>Grupo WhatsApp destino
-            <small style="color:#6b7f99;font-size:11px">(opcional — al seleccionar, los mensajes van al grupo)</small>
-          </label>
-          <select class="form-control" id="c-grupo" title="Grupo de WhatsApp destino para los mensajes de este contacto">
-            <option value="">— Sin grupo (enviar al celular) —</option>
-          </select>
-          <small id="c-grupo-aviso" style="color:#ffc107;display:none">
-            <i class="fas fa-exclamation-triangle mr-1"></i>Bot desconectado — mostrando grupos guardados
-          </small>
-        </div>
-        <div class="form-row">
+        <div class="form-row d-none">
           <div class="form-group col-md-6">
             <label>Permite WhatsApp</label>
             <select class="form-control" id="c-whatsapp" title="Indica si el contacto acepta mensajes por WhatsApp">
@@ -396,57 +377,6 @@ async function ejecutarImportacion() {
   }
 }
 
-// ── Mostrar/ocultar campos según grupo seleccionado ───────────
-function actualizarCamposPorGrupo() {
-  const tieneGrupo = document.getElementById('c-grupo').value !== ''
-  document.getElementById('grpApellidos').style.display = tieneGrupo ? 'none' : ''
-  document.getElementById('grpCelular').style.display   = tieneGrupo ? 'none' : ''
-  document.getElementById('grpCorreo').style.display    = tieneGrupo ? 'none' : ''
-}
-
-// ── Cargar grupos en el combo ──────────────────────────────────
-async function cargarComboGrupos(grupoSeleccionado) {
-  const sel = document.getElementById('c-grupo')
-  const aviso = document.getElementById('c-grupo-aviso')
-  sel.innerHTML = '<option value="">Cargando grupos...</option>'
-  sel.disabled = true
-  aviso.style.display = 'none'
-  try {
-    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/grupos')
-    const data = await resp.json()
-    sel.innerHTML = '<option value="">— Sin grupo (enviar al celular) —</option>'
-    if (data.ok && data.datos.length) {
-      data.datos.forEach(g => {
-        const opt = document.createElement('option')
-        opt.value = g.id
-        opt.textContent = g.nombre
-        opt.title = g.jid
-        if (grupoSeleccionado && grupoSeleccionado == g.id) opt.selected = true
-        sel.appendChild(opt)
-      })
-    } else if (!data.ok) {
-      aviso.style.display = ''
-    }
-  } catch (e) {
-    sel.innerHTML = '<option value="">Error al cargar grupos</option>'
-  }
-  sel.disabled = false
-  actualizarCamposPorGrupo()
-  sel.addEventListener('change', actualizarCamposPorGrupo)
-}
-
-// ── Sincronización manual desde botón ─────────────────────────
-async function sincronizarGrupos() {
-  try {
-    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/grupos/sync', { method: 'POST' })
-    const data = await resp.json()
-    if (!data.ok) { Alerta.error(data.error); return }
-    Alerta.exito(data.total + ' grupos sincronizados')
-  } catch (err) {
-    Alerta.error(err.message)
-  }
-}
-
 // ── Abrir modal NUEVO ──────────────────────────────────────────
 function abrirNuevo() {
   document.getElementById('c-id').value = ''
@@ -459,7 +389,6 @@ function abrirNuevo() {
   document.getElementById('grpEstado').style.display = 'none'
   document.getElementById('modalTitulo').textContent = 'Nuevo Contacto'
   Modal.show('modalContacto')
-  cargarComboGrupos(null)
 }
 
 // ── Abrir modal EDITAR ─────────────────────────────────────────
@@ -479,7 +408,6 @@ async function abrirEditar(id) {
     document.getElementById('grpEstado').style.display = ''
     document.getElementById('modalTitulo').textContent = 'Editar Contacto — ' + c.nombres + ' ' + (c.apellidos || '')
     Modal.show('modalContacto')
-    cargarComboGrupos(c.grupo_id)
   } catch (err) {
     Alerta.error('Error al cargar el contacto: ' + err.message)
   }
@@ -508,10 +436,9 @@ async function eliminarContacto(id, nombre) {
 async function guardarContacto() {
   const id      = document.getElementById('c-id').value
   const nombres = document.getElementById('c-nombres').value.trim()
-  const grupoId = document.getElementById('c-grupo').value || null
   const celular = document.getElementById('c-celular').value.trim()
-  if (!nombres)              { Alerta.error('El nombre es requerido'); return }
-  if (!grupoId && !celular)  { Alerta.error('El celular es requerido cuando no hay grupo seleccionado'); return }
+  if (!nombres)  { Alerta.error('El nombre es requerido'); return }
+  if (!celular)  { Alerta.error('El celular es requerido'); return }
 
   const cuerpo = {
     nombres,
@@ -520,7 +447,6 @@ async function guardarContacto() {
     correo:           document.getElementById('c-correo').value.trim() || null,
     permite_whatsapp: document.getElementById('c-whatsapp').value,
     estado:           document.getElementById('c-estado').value,
-    grupo_id:         grupoId ? parseInt(grupoId) : null,
   }
 
   try {
@@ -549,20 +475,12 @@ async function cargarContactos() {
 
     document.getElementById('tbodyContactos').innerHTML = data.datos.map(c => {
       const nombreCompleto = (c.nombres + ' ' + (c.apellidos || '')).trim()
-      const grupoBadge = c.grupo_nombre
-        ? `<span class="badge badge-info" title="${c.grupo_jid || ''}" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;display:inline-block;white-space:nowrap;vertical-align:middle">
-             <i class="fab fa-whatsapp mr-1"></i>${c.grupo_nombre}
-           </span>`
-        : '<span style="color:#4a6080;font-size:11px">—</span>'
       return `
         <tr>
           <td>${c.id}</td>
           <td>${c.nombres}</td>
           <td>${c.apellidos || ''}</td>
           <td><code style="color:#00d4ff">${c.celular}</code></td>
-          <td>${c.correo || '-'}</td>
-          <td>${c.permite_whatsapp == 1 ? '<span class="badge badge-success">Si</span>' : '<span class="badge badge-secondary">No</span>'}</td>
-          <td>${grupoBadge}</td>
           <td>${badgeActivo(c.estado)}</td>
           <td>
             <button class="btn btn-xs btn-info" onclick="abrirEditar(${c.id})" title="Editar a ${nombreCompleto}">

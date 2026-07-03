@@ -508,8 +508,9 @@ x-api-key: TU_CLAVE_API_SECRETA
 | `POST` | `/contactos` | Crea un contacto nuevo |
 | `GET` | `/plantillas` | Lista plantillas activas |
 | `POST` | `/plantillas` | Crea una plantilla nueva |
-| `POST` | `/mensajes` | Crea un mensaje en la cola de envío |
+| `POST` | `/mensajes` | Crea un mensaje en la cola de envío (envío diferido) |
 | `GET` | `/mensajes/:id` | Consulta el estado de un mensaje |
+| `POST` | `/mensaje-directo` | Envía de inmediato sin pasar por el scheduler |
 | `POST` | `/calendario` | Crea un evento con alertas automáticas |
 | `GET` | `/grupos` | Lista los grupos WhatsApp del número activo |
 
@@ -603,6 +604,30 @@ Invoke-RestMethod -Uri "http://localhost:3000/plantillas" -Method POST `
 **Respuesta esperada:**
 ```json
 { "ok": true, "id": 1 }
+```
+
+---
+
+### POST `/mensaje-directo`
+Envía un mensaje de forma inmediata sin pasar por el scheduler. Si el bot está desconectado responde `503` con error claro, sin encolar nada.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/mensaje-directo" -Method POST `
+  -Headers @{"x-api-key"="TU_CLAVE_API_SECRETA"; "Content-Type"="application/json"} `
+  -Body '{"destino":"593984103258@s.whatsapp.net","texto":"Mensaje urgente al instante","cuenta_id":1}'
+```
+
+**Campos obligatorios:** `destino`, `texto`
+**Campos opcionales:** `cuenta_id` (default `1`), `contacto_id` (default `null`)
+
+**Respuesta exitosa:**
+```json
+{ "ok": true, "id": 21, "cuenta_id": 1, "destino": "593984103258@s.whatsapp.net" }
+```
+
+**Respuesta si bot desconectado:**
+```json
+{ "ok": false, "error": "Cuenta 1 no está conectada a WhatsApp" }
 ```
 
 ---

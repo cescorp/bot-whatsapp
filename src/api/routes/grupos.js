@@ -1,37 +1,29 @@
 const { Router } = require('express')
 const { listarGrupos, estaConectado } = require('../../whatsapp')
-const path = require('path')
-const fs   = require('fs')
+const { pool } = require('../../db')
 
-const router     = Router()
-const GRUPOS_FILE = path.join('/app', 'grupos.txt')
+const router = Router()
 
-// GET /grupos — devuelve lista de grupos WhatsApp
-// Si el bot está conectado refresca el archivo primero.
-// Si no está conectado devuelve el último archivo guardado.
+// GET /grupos?cuenta_id=1 — devuelve lista de grupos de una cuenta
+// Si el bot está conectado refresca desde WhatsApp y actualiza wts_grupo.
+// Si no está conectado devuelve lo que haya en BD.
 router.get('/', async (req, res) => {
+  const cuenta_id = parseInt(req.query.cuenta_id || '1')
+
   try {
-    if (estaConectado()) {
-      await listarGrupos()
+    if (estaConectado(cuenta_id)) {
+      await listarGrupos(cuenta_id)
     }
 
-    if (!fs.existsSync(GRUPOS_FILE)) {
-      return res.status(503).json({ ok: false, error: 'Bot desconectado y sin caché de grupos' })
-    }
+    const { rows } = await pool.query(`
+      SELECT wts_grupo_id AS id, wts_grupo_nombre AS nombre, wts_grupo_jid AS jid
+      FROM wts_grupo
+      WHERE COALESCE(wts_cuenta_id, 1) = $1
+        AND wts_grupo_estado = 1
+      ORDER BY wts_grupo_nombre
+    `, [cuenta_id])
 
-    const contenido = fs.readFileSync(GRUPOS_FILE, 'utf8')
-    const lineas    = contenido.split('\n').slice(3) // salta encabezado
-
-    const grupos = lineas
-      .filter(l => l.trim())
-      .map(l => {
-        const partes = l.trim().split(/\s+/)
-        const id     = partes[partes.length - 1]
-        const nombre = partes.slice(0, -1).join(' ').trim()
-        return { nombre, id }
-      })
-
-    res.json({ ok: true, total: grupos.length, grupos })
+    res.json({ ok: true, cuenta_id, total: rows.length, grupos: rows })
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message })
   }

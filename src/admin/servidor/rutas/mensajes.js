@@ -3,15 +3,16 @@ const { pool }   = require('../../../db')
 
 const router = Router()
 
-// GET /admin/api/mensajes?estado=&desde=&hasta=&page=&limit=
+// GET /admin/api/mensajes?cuenta_id=&estado=&desde=&hasta=&page=&limit=
 router.get('/', async (req, res) => {
-  const { estado, desde, hasta, page = 1, limit = 50 } = req.query
+  const { cuenta_id, estado, desde, hasta, page = 1, limit = 50 } = req.query
   const conds = []
   const vals  = []
 
-  if (estado)        { vals.push(estado);  conds.push(`m.wts_mensaje_estado = $${vals.length}`) }
-  if (desde)         { vals.push(desde);   conds.push(`m.wts_mensaje_fecha_programada >= $${vals.length}`) }
-  if (hasta)         { vals.push(hasta);   conds.push(`m.wts_mensaje_fecha_programada <= $${vals.length}`) }
+  if (cuenta_id) { vals.push(parseInt(cuenta_id)); conds.push(`COALESCE(m.wts_cuenta_id,1) = $${vals.length}`) }
+  if (estado)    { vals.push(estado);  conds.push(`m.wts_mensaje_estado = $${vals.length}`) }
+  if (desde)     { vals.push(desde);   conds.push(`m.wts_mensaje_fecha_programada >= $${vals.length}`) }
+  if (hasta)     { vals.push(hasta);   conds.push(`m.wts_mensaje_fecha_programada <= $${vals.length}`) }
 
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : ''
   const offset = (parseInt(page) - 1) * parseInt(limit)
@@ -30,10 +31,12 @@ router.get('/', async (req, res) => {
              m.wts_mensaje_prioridad   AS prioridad,
              concat(c.wts_contacto_nombres,' ',c.wts_contacto_apellidos) AS contacto,
              p.wts_plantilla_nombre    AS plantilla,
+             ct.wts_cuenta_nombre      AS cuenta,
              m.fecha_crea
       FROM   wts_mensaje m
-      INNER JOIN wts_contacto c ON c.wts_contacto_id = m.wts_contacto_id
+      LEFT  JOIN wts_contacto c  ON c.wts_contacto_id  = m.wts_contacto_id
       LEFT  JOIN wts_plantilla p ON p.wts_plantilla_id = m.wts_plantilla_id
+      LEFT  JOIN wts_cuenta ct   ON ct.wts_cuenta_id   = m.wts_cuenta_id
       ${where}
       ORDER BY m.wts_mensaje_fecha_programada DESC, m.wts_mensaje_id DESC
       LIMIT $${vals.length - 1} OFFSET $${vals.length}
@@ -68,6 +71,29 @@ router.get('/:id', async (req, res) => {
     ])
     if (!msg) return res.status(404).json({ ok: false, error: 'No encontrado' })
     res.json({ ok: true, mensaje: msg, log })
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message })
+  }
+})
+
+// POST /admin/api/mensajes — crea mensaje programado desde el panel
+router.post('/', async (req, res) => {
+  const { contacto_id, destino, texto, fecha_programada, cuenta_id = 1 } = req.body
+  if (!destino || !texto || !fecha_programada) {
+    return res.status(400).json({ ok: false, error: 'destino, texto y fecha_programada son obligatorios' })
+  }
+  try {
+    const { rows } = await pool.query(`
+      INSERT INTO wts_mensaje (
+        wts_contacto_id, wts_mensaje_tipo, wts_mensaje_origen,
+        wts_mensaje_destino, wts_mensaje_texto,
+        wts_mensaje_fecha_programada, wts_mensaje_estado,
+        wts_mensaje_prioridad, wts_mensaje_intentos,
+        wts_cuenta_id, user_crea, fecha_crea
+      ) VALUES ($1, 1, 2, $2, $3, $4, 1, 5, 0, $5, $6, NOW())
+      RETURNING wts_mensaje_id AS id
+    `, [contacto_id || null, destino, texto, fecha_programada, cuenta_id, req.usuario.email])
+    res.status(201).json({ ok: true, id: rows[0].id })
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message })
   }

@@ -146,6 +146,7 @@ Express app (puerto 3000)
    ├─ GET  /estado                → estado de conexión de WhatsApp
    ├─ POST /mensajes              → inserta un mensaje puntual en la cola (estado=1, origen=API)
    ├─ GET  /mensajes/:id          → consulta estado/resultado de un mensaje
+   ├─ POST /mensaje-directo       → envía de inmediato sin pasar por el scheduler (estado=2)
    ├─ GET  /contactos             → lista contactos
    ├─ POST /contactos             → crea contacto
    ├─ GET  /plantillas            → lista plantillas activas
@@ -155,6 +156,8 @@ Express app (puerto 3000)
 ```
 
 Un `POST /mensajes` o `POST /calendario` exitoso termina insertando filas que el **Flujo 1** procesará en su próximo ciclo.
+
+Un `POST /mensaje-directo` llama a `enviarMensaje()` en el acto y registra el mensaje con estado `2` (enviado). Si el bot está desconectado responde `503` inmediatamente sin encolar nada.
 
 ## Flujo 4 — Panel administrativo (uso humano, protegido con JWT)
 
@@ -246,3 +249,26 @@ Panel admin/API (crear evento     ─┼──►  wts_mensaje (estado=1) ──
                                                                         ├─ marcarEnviado (estado=3)
                                                                         └─ marcarError   (estado=4)
 ```
+
+
+
+## Resumen del flujo alerta por correo/mail desconexion
+scheduler() — cada ciclo
+  │
+  ├─ estaConectado() = true  → reinicia contador a 0
+  │
+  └─ estaConectado() = false
+        │
+        ├─ ciclos_sin_conexion++
+        │
+        └─ ciclos_sin_conexion >= ALERTA_DESCONEXION_CICLOS ?
+              │
+              ├─ No → log warn, continúa
+              │
+              └─ Sí → leer ALERTA_EMAIL_HABILITADO de sis_parametros
+                          │
+                          ├─ '0' → no hace nada
+                          │
+                          └─ '1' → enviar correo via nodemailer
+                                    (SMTP desde .env, destino desde sis_parametros)
+                                    → reinicia contador (no spamear)

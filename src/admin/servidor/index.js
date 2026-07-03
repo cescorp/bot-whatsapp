@@ -43,6 +43,8 @@ router.use('/api/plantillas', verificarJWT, require('./rutas/plantillas'))
 router.use('/api/calendario', verificarJWT, require('./rutas/calendario'))
 router.use('/api/reportes',   verificarJWT, require('./rutas/reportes'))
 router.use('/api/grupos',     verificarJWT, require('./rutas/grupos'))
+router.use('/api/cuentas',         verificarJWT, require('./rutas/cuentas'))
+router.use('/api/mensaje-directo', verificarJWT, require('./rutas/mensajeDirecto'))
 
 router.get('/', (req, res) => res.sendFile(path.join(__dirname, '../login.html')))
 

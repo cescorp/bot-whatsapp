@@ -42,6 +42,7 @@ C:\bot-whatsapp\
 │   │   ├── routes\
 │   │   │   ├── estado.js        ← GET /estado
 │   │   │   ├── mensajes.js      ← GET/POST /mensajes
+│   │   │   ├── mensajeDirecto.js← POST /mensaje-directo
 │   │   │   ├── contactos.js     ← GET/POST /contactos
 │   │   │   ├── plantillas.js    ← GET/POST /plantillas
 │   │   │   ├── calendario.js    ← POST /calendario
@@ -347,8 +348,9 @@ x-api-key: clave-secreta-bot-2026
 | `POST` | `/contactos` | Crea un contacto nuevo |
 | `GET` | `/plantillas` | Lista plantillas activas |
 | `POST` | `/plantillas` | Crea una plantilla nueva |
-| `POST` | `/mensajes` | Crea un mensaje en la cola |
+| `POST` | `/mensajes` | Crea un mensaje en la cola (envío diferido) |
 | `GET` | `/mensajes/:id` | Consulta estado de un mensaje |
+| `POST` | `/mensaje-directo` | Envía de inmediato sin pasar por el scheduler |
 | `POST` | `/calendario` | Crea evento con alertas automáticas |
 | `GET` | `/grupos` | Lista grupos WhatsApp del número activo |
 
@@ -472,8 +474,37 @@ Invoke-RestMethod -Uri "http://localhost:3000/plantillas" -Method POST `
 
 ---
 
+### POST `/mensaje-directo`
+Envía un mensaje de inmediato sin esperar el ciclo del scheduler. Si el bot está desconectado responde `503`.
+
+**Request:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/mensaje-directo" -Method POST `
+  -Headers @{"x-api-key"="TU_API_KEY"; "Content-Type"="application/json"} `
+  -Body '{"destino":"593984103258@s.whatsapp.net","texto":"Mensaje urgente enviado al instante","cuenta_id":1}'
+```
+
+**Body:**
+```json
+{
+  "destino": "593984103258@s.whatsapp.net",
+  "texto": "Mensaje urgente enviado al instante",
+  "cuenta_id": 1,
+  "contacto_id": 42
+}
+```
+
+> `cuenta_id` y `contacto_id` son opcionales (default: `1` y `null`).
+
+**Response:**
+```json
+{ "ok": true, "id": 21, "cuenta_id": 1, "destino": "593984103258@s.whatsapp.net" }
+```
+
+---
+
 ### POST `/mensajes`
-Crea un mensaje puntual en la cola.
+Crea un mensaje puntual en la cola (envío diferido).
 
 **Request:**
 ```powershell

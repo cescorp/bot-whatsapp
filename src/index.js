@@ -1,44 +1,74 @@
 require('dotenv').config()
-const { iniciarBot, enviarMensaje, listarGrupos, estaConectado } = require('./whatsapp')
-const { obtenerPendientes, marcarEnviado, marcarError, obtenerConfig } = require('./db')
+const { iniciarBot, iniciarCuenta, enviarMensaje, listarGrupos, estaConectado, cuentas } = require('./whatsapp')
+const { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas } = require('./db')
 const { iniciarAPI } = require('./api/server')
+const { enviarAlertaDesconexion } = require('./mailer')
 const logger = require('./logger')
 
+// Contador de ciclos sin conexión por cuenta  Map<cuentaId, number>
+const ciclosSinConexion = new Map()
+
 async function procesarPendientes() {
-  if (!estaConectado()) {
-    logger.warn('WhatsApp no conectado — omitiendo ciclo')
-    return
-  }
-
-  let pendientes
+  // Obtener cuentas activas desde BD
+  let cuentasActivas
   try {
-    pendientes = await obtenerPendientes()
+    cuentasActivas = await obtenerCuentasActivas()
   } catch (err) {
-    logger.error({ err }, 'Error consultando la BD')
+    logger.error({ err }, 'Error leyendo cuentas activas')
     return
   }
 
-  if (pendientes.length === 0) {
-    logger.info('Sin mensajes pendientes')
-    return
-  }
+  // Leer umbral de alerta (compartido para todas las cuentas)
+  const { rows: umbralRows } = await pool.query(
+    `SELECT sis_parametros_valor FROM sis_parametros WHERE sis_parametros_nombre = 'ALERTA_DESCONEXION_CICLOS'`
+  ).catch(() => ({ rows: [] }))
+  const umbral = parseInt(umbralRows[0]?.sis_parametros_valor ?? '3')
 
-  logger.info(`Procesando ${pendientes.length} mensaje(s)`)
+  for (const cuenta of cuentasActivas) {
+    const { id: cuentaId, nombre } = cuenta
 
-  for (const fila of pendientes) {
+    if (!estaConectado(cuentaId)) {
+      const ciclos = (ciclosSinConexion.get(cuentaId) ?? 0) + 1
+      ciclosSinConexion.set(cuentaId, ciclos)
+      logger.warn(`[Cuenta ${cuentaId} — ${nombre}] Sin conexión — ciclo ${ciclos}`)
+
+      if (ciclos >= umbral) {
+        await enviarAlertaDesconexion(nombre)
+        ciclosSinConexion.set(cuentaId, 0)
+      }
+      continue
+    }
+
+    ciclosSinConexion.set(cuentaId, 0)
+
+    let pendientes
     try {
-      await enviarMensaje(fila.celular, fila.textoFinal)
-      await marcarEnviado(fila.id)
-      logger.info({ id: fila.id, celular: fila.celular }, 'Enviado OK')
+      pendientes = await obtenerPendientes(cuentaId)
     } catch (err) {
-      await marcarError(fila.id, err)
-      logger.error({ id: fila.id, err }, 'Error al enviar')
+      logger.error({ err, cuentaId }, 'Error consultando la BD')
+      continue
+    }
+
+    if (pendientes.length === 0) {
+      logger.info(`[Cuenta ${cuentaId}] Sin mensajes pendientes`)
+      continue
+    }
+
+    logger.info(`[Cuenta ${cuentaId}] Procesando ${pendientes.length} mensaje(s)`)
+
+    for (const fila of pendientes) {
+      try {
+        await enviarMensaje(cuentaId, fila.celular, fila.textoFinal)
+        await marcarEnviado(fila.id)
+        logger.info({ id: fila.id, celular: fila.celular, cuentaId }, 'Enviado OK')
+      } catch (err) {
+        await marcarError(fila.id, err)
+        logger.error({ id: fila.id, err, cuentaId }, 'Error al enviar')
+      }
     }
   }
 }
 
-// Scheduler dinámico: lee INTERVALO_MINUTOS desde BD en cada ciclo.
-// Cambiar el valor en wts_configuracion se aplica en el siguiente ciclo sin reiniciar.
 async function scheduler() {
   await procesarPendientes()
 
@@ -53,12 +83,18 @@ async function main() {
   if (process.argv.includes('--listar-grupos')) {
     await iniciarBot()
     await new Promise(resolve => setTimeout(resolve, 6000))
-    await listarGrupos()
+    await listarGrupos(1)
     process.exit(0)
   }
 
   iniciarAPI()
-  await iniciarBot()
+
+  // Iniciar todas las cuentas activas en BD
+  const cuentasActivas = await obtenerCuentasActivas()
+  for (const { id, nombre } of cuentasActivas) {
+    await iniciarCuenta(id, nombre)
+  }
+
   await new Promise(resolve => setTimeout(resolve, 5000))
   scheduler()
 }

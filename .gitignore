@@ -1,5 +1,6 @@
-# Sesión WhatsApp — archivos generados automáticamente por Baileys
-src/auth/*.json
+# Sesiones WhatsApp — archivos generados automáticamente por Baileys
+src/auth/cuenta-*/
+src/auth/*.png
 
 # Logs de errores
 log_errores/

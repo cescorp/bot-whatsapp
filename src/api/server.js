@@ -15,7 +15,8 @@ app.use('/mensajes',   apiKey, require('./routes/mensajes'))
 app.use('/contactos',  apiKey, require('./routes/contactos'))
 app.use('/plantillas', apiKey, require('./routes/plantillas'))
 app.use('/calendario', apiKey, require('./routes/calendario'))
-app.use('/grupos',     apiKey, require('./routes/grupos'))
+app.use('/grupos',          apiKey, require('./routes/grupos'))
+app.use('/mensaje-directo', apiKey, require('./routes/mensajeDirecto'))
 
 // Ruta no encontrada
 app.use((req, res) => {

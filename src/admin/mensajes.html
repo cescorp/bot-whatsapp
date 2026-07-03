@@ -8,6 +8,27 @@
   <link rel="stylesheet" href="plugins/datatables-bs4/css/dataTables.bootstrap4.min.css">
   <link rel="stylesheet" href="adminlte/css/adminlte.min.css">
   <link rel="stylesheet" href="assets/css/custom.css">
+  <style>
+    .csel-wrap { position:relative }
+    .csel-input { display:flex;align-items:center;justify-content:space-between;
+      background:#1a2234;border:1px solid rgba(0,212,255,.2);border-radius:4px;
+      padding:6px 12px;cursor:pointer;color:#b0c4de;font-size:14px;min-height:38px;
+      transition:border-color .15s }
+    .csel-input:hover { border-color:rgba(0,212,255,.5) }
+    .csel-input.open { border-color:#00d4ff }
+    .csel-placeholder { color:#6b7f99 }
+    .csel-arrow { font-size:11px;color:#6b7f99;transition:transform .2s }
+    .csel-input.open .csel-arrow { transform:rotate(180deg) }
+    .csel-dropdown { position:absolute;z-index:9999;width:100%;background:#131f35;
+      border:1px solid rgba(0,212,255,.3);border-radius:4px;margin-top:2px;
+      box-shadow:0 8px 24px rgba(0,0,0,.4) }
+    .csel-search { width:100%;background:#0a1220;border:none;border-bottom:1px solid rgba(0,212,255,.15);
+      color:#b0c4de;padding:8px 12px;font-size:13px;outline:none }
+    .csel-list { list-style:none;margin:0;padding:4px 0;max-height:200px;overflow-y:auto }
+    .csel-list li { padding:7px 14px;cursor:pointer;color:#b0c4de;font-size:13px;transition:background .1s }
+    .csel-list li:hover { background:rgba(0,212,255,.12);color:#00d4ff }
+    .csel-list li.csel-empty { color:#6b7f99;cursor:default;font-style:italic }
+  </style>
 </head>
 <body class="hold-transition sidebar-mini layout-fixed sidebar-dark-primary">
 <div class="wrapper">
@@ -37,21 +58,33 @@
       <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
       <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
       <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+          <li class="nav-item"><a href="cuentas.html" class="nav-link"><i class="nav-icon fas fa-mobile-alt"></i><p>Cuentas WA</p></a></li>
     </ul></nav></div>
   </aside>
 
   <div class="content-wrapper">
     <div class="content-header">
-      <div class="container-fluid"><h1><i class="fas fa-comment-dots mr-2" style="color:#00d4ff"></i>Mensajes</h1></div>
+      <div class="container-fluid d-flex justify-content-between align-items-center">
+        <h1><i class="fas fa-comment-dots mr-2" style="color:#00d4ff"></i>Mensajes</h1>
+        <button class="btn btn-primary btn-sm" onclick="abrirNuevoMensaje()">
+          <i class="fas fa-plus mr-1"></i>Nuevo mensaje
+        </button>
+      </div>
     </div>
     <section class="content"><div class="container-fluid">
 
       <div class="card mb-3">
         <div class="card-body py-2">
-          <div class="row align-items-end">
-            <div class="col-md-2">
-              <label class="mb-1">Estado</label>
-              <select class="form-control form-control-sm" id="f-estado" title="Filtrar por estado del mensaje">
+          <div class="d-flex align-items-end flex-wrap" style="gap:8px">
+            <div>
+              <label class="mb-1" style="font-size:12px">Cuenta</label>
+              <select class="form-control form-control-sm" id="f-cuenta" style="min-width:110px">
+                <option value="">Todas</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-1" style="font-size:12px">Estado</label>
+              <select class="form-control form-control-sm" id="f-estado" style="min-width:110px">
                 <option value="">Todos</option>
                 <option value="1">Pendiente</option>
                 <option value="2">Procesando</option>
@@ -60,21 +93,19 @@
                 <option value="5">Cancelado</option>
               </select>
             </div>
-            <div class="col-md-3">
-              <label class="mb-1">Desde</label>
-              <input type="datetime-local" class="form-control form-control-sm" id="f-desde" title="Fecha inicio del filtro">
+            <div>
+              <label class="mb-1" style="font-size:12px">Desde</label>
+              <input type="date" class="form-control form-control-sm" id="f-desde" style="min-width:130px">
             </div>
-            <div class="col-md-3">
-              <label class="mb-1">Hasta</label>
-              <input type="datetime-local" class="form-control form-control-sm" id="f-hasta" title="Fecha fin del filtro">
+            <div>
+              <label class="mb-1" style="font-size:12px">Hasta</label>
+              <input type="date" class="form-control form-control-sm" id="f-hasta" style="min-width:130px">
             </div>
-            <div class="col-md-2">
-              <button class="btn btn-primary btn-sm btn-block" onclick="cargarMensajes()" title="Aplicar filtros de busqueda">
+            <div class="d-flex" style="gap:6px">
+              <button class="btn btn-primary btn-sm" onclick="cargarMensajes()" title="Aplicar filtros">
                 <i class="fas fa-search mr-1"></i>Buscar
               </button>
-            </div>
-            <div class="col-md-2">
-              <button class="btn btn-secondary btn-sm btn-block" onclick="limpiarFiltros()" title="Limpiar filtros y mostrar todos">
+              <button class="btn btn-secondary btn-sm" onclick="limpiarFiltros()" title="Limpiar filtros">
                 <i class="fas fa-times mr-1"></i>Limpiar
               </button>
             </div>
@@ -86,7 +117,7 @@
         <div class="card-body">
           <table id="tablaMensajes" class="table table-hover table-sm w-100">
             <thead>
-              <tr><th>ID</th><th>Contacto</th><th>Destino</th><th>Plantilla</th><th>Programado</th><th>Enviado</th><th>Estado</th><th>Acciones</th></tr>
+              <tr><th>ID</th><th>Cuenta</th><th>Contacto</th><th>Destino</th><th>Plantilla</th><th>Programado</th><th>Enviado</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody id="tbodyMensajes"></tbody>
           </table>
@@ -98,6 +129,113 @@
   <footer class="main-footer" style="background:#0d1526;border-top:1px solid rgba(0,212,255,.1);color:#6b7f99">
     <strong>AlertaWTS</strong> v1.0
   </footer>
+</div>
+
+<!-- Modal Nuevo Mensaje -->
+<div class="modal" id="modalNuevo" tabindex="-1" data-backdrop="static">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-comment-dots mr-2" style="color:#00d4ff"></i>Nuevo Mensaje</h5>
+        <button type="button" class="close" onclick="Modal.hide('modalNuevo')" style="color:#8ba3c7"><span>&times;</span></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Toggle tipo -->
+        <div class="d-flex mb-3" style="border:1px solid rgba(0,212,255,.25);border-radius:6px;overflow:hidden">
+          <button id="btnTipoDirecto" onclick="setTipo('directo')"
+            class="btn btn-primary btn-sm flex-fill"
+            style="border-radius:0;border:none;padding:8px">
+            <i class="fas fa-bolt mr-1"></i>Directo
+          </button>
+          <button id="btnTipoProgramado" onclick="setTipo('programado')"
+            class="btn btn-default btn-sm flex-fill"
+            style="border-radius:0;border:none;padding:8px;border-left:1px solid rgba(0,212,255,.25)">
+            <i class="fas fa-clock mr-1"></i>Programado
+          </button>
+        </div>
+
+        <!-- Cuenta -->
+        <div class="form-group">
+          <label>Cuenta WhatsApp</label>
+          <select class="form-control" id="n-cuenta" onchange="onCuentaNuevoChange(this.value)"></select>
+        </div>
+
+        <!-- Grupo con buscador (solo Directo) -->
+        <div class="form-group" id="grpGrupoNuevo" style="display:none">
+          <label>Grupo WhatsApp <small style="color:#6b7f99">(opcional)</small></label>
+          <div class="csel-wrap">
+            <div class="csel-input" onclick="cselGToggle()">
+              <span id="csel-g-label" class="csel-placeholder">— Buscar grupo —</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span id="csel-g-limpiar" onclick="event.stopPropagation();cselGReset()" style="display:none;color:#6b7f99;cursor:pointer;font-size:14px" title="Quitar grupo">&times;</span>
+                <i class="fas fa-chevron-down csel-arrow"></i>
+              </div>
+            </div>
+            <div class="csel-dropdown" id="csel-g-drop" style="display:none">
+              <input class="csel-search" placeholder="🔍 Buscar grupo..." oninput="cselGFiltrar(this.value)" autocomplete="off">
+              <ul class="csel-list" id="csel-g-list"></ul>
+            </div>
+            <input type="hidden" id="n-grupo-jid">
+          </div>
+        </div>
+
+        <!-- Contacto con buscador -->
+        <div class="form-group" id="grpContactoNuevo">
+          <label>Contacto <small style="color:#6b7f99">(opcional)</small></label>
+          <div class="csel-wrap">
+            <div class="csel-input" onclick="cselNToggle()">
+              <span id="csel-n-label" class="csel-placeholder">— Buscar contacto —</span>
+              <div style="display:flex;align-items:center;gap:8px">
+                <span id="csel-n-limpiar" onclick="event.stopPropagation();cselNReset()" style="display:none;color:#6b7f99;cursor:pointer;font-size:14px" title="Quitar contacto">&times;</span>
+                <i class="fas fa-chevron-down csel-arrow"></i>
+              </div>
+            </div>
+            <div class="csel-dropdown" id="csel-n-drop" style="display:none">
+              <input class="csel-search" placeholder="🔍 Buscar..." oninput="cselNFiltrar(this.value)" autocomplete="off">
+              <ul class="csel-list" id="csel-n-list"></ul>
+            </div>
+            <input type="hidden" id="n-contacto-id">
+          </div>
+        </div>
+
+        <!-- Número destino -->
+        <div class="form-group" id="grpDestino">
+          <label>Número destino <span style="color:#dc3545">*</span></label>
+          <div style="position:relative">
+            <input type="text" class="form-control" id="n-destino"
+              placeholder="593987654321"
+              title="Número con código de país">
+            <i id="n-destino-lock" class="fas fa-lock" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#6b7f99;font-size:12px"></i>
+          </div>
+          <small class="text-muted">Formato: 593XXXXXXXXX</small>
+        </div>
+
+        <!-- Mensaje -->
+        <div class="form-group">
+          <label>Mensaje <span style="color:#dc3545">*</span></label>
+          <textarea class="form-control" id="n-texto" rows="4"
+            placeholder="Escribe el mensaje aquí..."
+            oninput="document.getElementById('n-contador').textContent = this.value.length + '/1000'"
+            maxlength="1000"></textarea>
+          <small id="n-contador" class="text-muted float-right">0/1000</small>
+        </div>
+
+        <!-- Fecha programada (solo tipo programado) -->
+        <div class="form-group" id="grpFecha" style="display:none">
+          <label>Fecha de envío <span style="color:#dc3545">*</span></label>
+          <input type="date" class="form-control" id="n-fecha">
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="Modal.hide('modalNuevo')">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnEnviarNuevo" onclick="enviarNuevoMensaje()">
+          <i class="fas fa-bolt mr-1"></i>Enviar ahora
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Modal Detalle -->
@@ -132,6 +270,18 @@
 <script>
 let tabla
 let idMsgActual
+
+async function cargarCuentas() {
+  const resp  = await Auth.fetch(CONFIG.BASE_URL + '/api/cuentas')
+  const { datos } = await resp.json()
+  const sel   = document.getElementById('f-cuenta')
+  datos.forEach(c => {
+    const opt = document.createElement('option')
+    opt.value = c.id
+    opt.textContent = c.nombre
+    sel.appendChild(opt)
+  })
+}
 
 // ── Ver detalle del mensaje ────────────────────────────────────
 async function verDetalle(id) {
@@ -185,26 +335,290 @@ async function reenviarMensaje() {
     const data = await resp.json()
     if (!data.ok) { alert('Error: ' + data.error); return }
     Modal.hide('modalDetalle')
-    cargarMensajes()
+    await cargarMensajes()
   } catch (err) {
     alert('Error: ' + err.message)
   }
 }
 
+// ── Fechas por defecto ─────────────────────────────────────────
+function fechaHoy() {
+  const h = new Date()
+  return h.toISOString().slice(0, 10)
+}
+function primerDiaMes() {
+  const h = new Date()
+  return `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, '0')}-01`
+}
+function aplicarFechasPorDefecto() {
+  document.getElementById('f-desde').value = primerDiaMes()
+  document.getElementById('f-hasta').value = fechaHoy()
+}
+
 // ── Limpiar filtros ────────────────────────────────────────────
 function limpiarFiltros() {
+  document.getElementById('f-cuenta').value = ''
   document.getElementById('f-estado').value = ''
-  document.getElementById('f-desde').value = ''
-  document.getElementById('f-hasta').value = ''
+  aplicarFechasPorDefecto()
   cargarMensajes()
 }
+
+// ── Nuevo mensaje ──────────────────────────────────────────────
+let tipoMensaje = 'directo'
+let contactosNuevo = []
+
+function setTipo(tipo) {
+  tipoMensaje = tipo
+  const esDirecto = tipo === 'directo'
+  document.getElementById('btnTipoDirecto').className    = 'btn btn-sm flex-fill ' + (esDirecto  ? 'btn-primary' : 'btn-default')
+  document.getElementById('btnTipoProgramado').className = 'btn btn-sm flex-fill ' + (!esDirecto ? 'btn-primary' : 'btn-default')
+  document.getElementById('grpFecha').style.display       = !esDirecto ? '' : 'none'
+  document.getElementById('grpGrupoNuevo').style.display  = esDirecto  ? '' : 'none'
+  document.getElementById('grpContactoNuevo').style.display = ''
+  if (!esDirecto) { cselGReset(); document.getElementById('n-grupo-jid').value = '' }
+  const btn = document.getElementById('btnEnviarNuevo')
+  btn.innerHTML = esDirecto
+    ? '<i class="fas fa-bolt mr-1"></i>Enviar ahora'
+    : '<i class="fas fa-clock mr-1"></i>Programar'
+}
+
+// ── csel Grupos (modal nuevo) ──────────────────────────────────
+let gruposNuevo = []
+
+function cselGToggle() {
+  const drop = document.getElementById('csel-g-drop')
+  const btn  = drop.previousElementSibling
+  const abierto = drop.style.display !== 'none'
+  // cerrar contacto si está abierto
+  const ndrop = document.getElementById('csel-n-drop')
+  if (ndrop) { ndrop.style.display = 'none'; ndrop.previousElementSibling.classList.remove('open') }
+  if (abierto) {
+    drop.style.display = 'none'; btn.classList.remove('open')
+  } else {
+    drop.style.display = ''; btn.classList.add('open')
+    drop.querySelector('.csel-search').value = ''
+    cselGRender('')
+    drop.querySelector('.csel-search').focus()
+  }
+}
+
+function cselGRender(filtro) {
+  const ul    = document.getElementById('csel-g-list')
+  const lower = filtro.toLowerCase()
+  const items = gruposNuevo.filter(g => !lower || g.nombre.toLowerCase().includes(lower))
+  ul.innerHTML = items.length
+    ? items.map(g => `<li onclick="cselGSeleccionar('${g.jid}','${g.nombre.replace(/'/g,"\\'").replace(/"/g,'\\"')}',this)">${g.nombre}</li>`).join('')
+    : '<li class="csel-empty">Sin resultados</li>'
+}
+
+function cselGFiltrar(texto) { cselGRender(texto) }
+
+function cselGSeleccionar(jid, nombre, li) {
+  document.getElementById('n-grupo-jid').value             = jid
+  document.getElementById('n-destino').value               = jid
+  document.getElementById('csel-g-label').textContent      = nombre
+  document.getElementById('csel-g-label').classList.remove('csel-placeholder')
+  document.getElementById('csel-g-limpiar').style.display  = ''
+  document.getElementById('csel-g-drop').style.display     = 'none'
+  document.getElementById('csel-g-drop').previousElementSibling.classList.remove('open')
+  // ocultar contacto y número destino
+  cselNReset()
+  document.getElementById('grpContactoNuevo').style.display = 'none'
+  document.getElementById('grpDestino').style.display       = 'none'
+}
+
+function cselGReset() {
+  document.getElementById('n-grupo-jid').value             = ''
+  document.getElementById('n-destino').value               = ''
+  document.getElementById('csel-g-label').textContent      = '— Buscar grupo —'
+  document.getElementById('csel-g-label').classList.add('csel-placeholder')
+  document.getElementById('csel-g-limpiar').style.display  = 'none'
+  const drop = document.getElementById('csel-g-drop')
+  if (drop) { drop.style.display = 'none'; drop.previousElementSibling.classList.remove('open') }
+  // mostrar contacto y número destino
+  document.getElementById('grpContactoNuevo').style.display = ''
+  document.getElementById('grpDestino').style.display       = ''
+}
+
+async function cargarGruposNuevo(cuenta_id) {
+  const lbl = document.getElementById('csel-g-label')
+  cselGReset()
+  if (lbl) { lbl.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Cargando...'; lbl.classList.remove('csel-placeholder') }
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/grupos?cuenta_id=' + cuenta_id)
+    const data = await resp.json()
+    gruposNuevo = data.ok ? data.datos : []
+    cselGRender('')
+    if (lbl) { lbl.textContent = `— Buscar grupo (${gruposNuevo.length}) —`; lbl.classList.add('csel-placeholder') }
+  } catch (e) {
+    gruposNuevo = []
+    if (lbl) { lbl.textContent = '— Buscar grupo —'; lbl.classList.add('csel-placeholder') }
+  }
+}
+
+function onCuentaNuevoChange(cuenta_id) {
+  if (tipoMensaje === 'directo') cargarGruposNuevo(cuenta_id)
+}
+
+// ── csel para modal nuevo ──────────────────────────────────────
+function cselNToggle() {
+  const drop = document.getElementById('csel-n-drop')
+  const btn  = drop.previousElementSibling
+  const abierto = drop.style.display !== 'none'
+  if (abierto) {
+    drop.style.display = 'none'
+    btn.classList.remove('open')
+  } else {
+    drop.style.display = ''
+    btn.classList.add('open')
+    drop.querySelector('.csel-search').value = ''
+    cselNRender('')
+    drop.querySelector('.csel-search').focus()
+  }
+}
+
+function cselNRender(filtro) {
+  const ul    = document.getElementById('csel-n-list')
+  const lower = filtro.toLowerCase()
+  const items = contactosNuevo.filter(c => !lower || c.label.toLowerCase().includes(lower))
+  ul.innerHTML = items.length
+    ? items.map(i => `<li onclick="cselNSeleccionar(${i.id},'${i.celular}','${i.label.replace(/'/g,"\\'")}',this)">${i.label}</li>`).join('')
+    : '<li class="csel-empty">Sin resultados</li>'
+}
+
+function cselNFiltrar(texto) { cselNRender(texto) }
+
+function cselNSeleccionar(id, celular, label, li) {
+  document.getElementById('n-contacto-id').value       = id
+  document.getElementById('n-destino').value           = celular
+  document.getElementById('n-destino').readOnly        = true
+  document.getElementById('n-destino-lock').style.display = ''
+  document.getElementById('csel-n-label').textContent  = label
+  document.getElementById('csel-n-label').classList.remove('csel-placeholder')
+  document.getElementById('csel-n-limpiar').style.display = ''
+  document.getElementById('csel-n-drop').style.display = 'none'
+  document.getElementById('csel-n-drop').previousElementSibling.classList.remove('open')
+}
+
+function cselNReset() {
+  document.getElementById('n-contacto-id').value          = ''
+  document.getElementById('n-destino').value              = ''
+  document.getElementById('n-destino').readOnly           = false
+  document.getElementById('n-destino-lock').style.display = 'none'
+  document.getElementById('csel-n-label').textContent     = '— Buscar contacto —'
+  document.getElementById('csel-n-label').classList.add('csel-placeholder')
+  document.getElementById('csel-n-limpiar').style.display = 'none'
+  const drop = document.getElementById('csel-n-drop')
+  drop.style.display = 'none'
+  drop.previousElementSibling.classList.remove('open')
+}
+
+async function cargarContactosNuevo() {
+  const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/contactos')
+  const data = await resp.json()
+  if (!data.ok) return
+  contactosNuevo = data.datos.map(c => ({
+    id:     c.id,
+    celular: c.celular,
+    label:  (c.nombres + ' ' + (c.apellidos || '')).trim() + ' — ' + c.celular
+  }))
+  cselNRender('')
+}
+
+async function cargarCuentasNuevo() {
+  const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/cuentas')
+  const { datos } = await resp.json()
+  const sel = document.getElementById('n-cuenta')
+  sel.innerHTML = ''
+  datos.forEach(c => {
+    const opt = document.createElement('option')
+    opt.value = c.id
+    opt.textContent = c.nombre
+    sel.appendChild(opt)
+  })
+}
+
+function abrirNuevoMensaje() {
+  document.getElementById('n-destino').value = ''
+  document.getElementById('n-texto').value   = ''
+  document.getElementById('n-fecha').value   = fechaHoy()
+  document.getElementById('n-contador').textContent = '0/1000'
+  cselNReset()
+  cselGReset()
+  setTipo('directo')
+  cargarCuentasNuevo().then(() => {
+    const cuenta_id = document.getElementById('n-cuenta').value || 1
+    cargarGruposNuevo(cuenta_id)
+  })
+  cargarContactosNuevo()
+  Modal.show('modalNuevo')
+}
+
+async function enviarNuevoMensaje() {
+  const cuenta_id   = parseInt(document.getElementById('n-cuenta').value)
+  const texto       = document.getElementById('n-texto').value.trim()
+  const contacto_id = document.getElementById('n-contacto-id').value || null
+  const grupoJid    = document.getElementById('n-grupo-jid').value.trim()
+  let   destino     = grupoJid || document.getElementById('n-destino').value.trim()
+
+  if (!texto)   { Alerta.error('El mensaje es requerido'); return }
+  if (!destino) { Alerta.error('El número destino es requerido'); return }
+
+  // Normalizar: agregar sufijo solo si no es JID de grupo
+  if (!destino.includes('@')) destino = destino + '@s.whatsapp.net'
+
+  const btn = document.getElementById('btnEnviarNuevo')
+  btn.disabled   = true
+  btn.innerHTML  = '<i class="fas fa-spinner fa-spin mr-1"></i>Enviando...'
+
+  try {
+    if (tipoMensaje === 'directo') {
+      const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/mensaje-directo', {
+        method: 'POST',
+        body: JSON.stringify({ destino, texto, cuenta_id, contacto_id: contacto_id ? parseInt(contacto_id) : null })
+      })
+      const data = await resp.json()
+      if (!data.ok) { Alerta.error(data.error); return }
+      Modal.hide('modalNuevo')
+      await Alerta.exito('Mensaje enviado — ID #' + data.id)
+
+    } else {
+      const fecha = document.getElementById('n-fecha').value
+      if (!fecha) { Alerta.error('La fecha de envío es requerida'); return }
+      const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/mensajes', {
+        method: 'POST',
+        body: JSON.stringify({ contacto_id: contacto_id ? parseInt(contacto_id) : null, destino, texto, fecha_programada: fecha, cuenta_id })
+      })
+      const data = await resp.json()
+      if (!data.ok) { Alerta.error(data.error); return }
+      Modal.hide('modalNuevo')
+      await Alerta.exito('Mensaje programado — ID #' + data.id)
+    }
+    cargarMensajes()
+  } finally {
+    btn.disabled  = false
+    setTipo(tipoMensaje)
+  }
+}
+
+// Cerrar csels al hacer click fuera
+document.addEventListener('click', e => {
+  if (!e.target.closest('.csel-wrap')) {
+    ;['csel-n-drop','csel-g-drop'].forEach(id => {
+      const drop = document.getElementById(id)
+      if (drop) { drop.style.display = 'none'; drop.previousElementSibling?.classList.remove('open') }
+    })
+  }
+})
 
 // ── Cargar tabla ───────────────────────────────────────────────
 async function cargarMensajes() {
   const params = new URLSearchParams()
+  const cuenta = document.getElementById('f-cuenta').value
   const estado = document.getElementById('f-estado').value
   const desde  = document.getElementById('f-desde').value
   const hasta  = document.getElementById('f-hasta').value
+  if (cuenta) params.append('cuenta_id', cuenta)
   if (estado) params.append('estado', estado)
   if (desde)  params.append('desde', desde)
   if (hasta)  params.append('hasta', hasta)
@@ -219,6 +633,7 @@ async function cargarMensajes() {
     document.getElementById('tbodyMensajes').innerHTML = data.datos.map(m => `
       <tr>
         <td>${m.id}</td>
+        <td><span class="badge badge-secondary">${m.cuenta || 'Principal'}</span></td>
         <td>${m.contacto || '-'}</td>
         <td><code style="color:#00d4ff;font-size:11px">${m.destino}</code></td>
         <td>${m.plantilla || '<span style="color:#6b7f99">-</span>'}</td>
@@ -240,6 +655,8 @@ async function cargarMensajes() {
   }
 }
 
+aplicarFechasPorDefecto()
+cargarCuentas()
 cargarMensajes()
 </script>
 </body>

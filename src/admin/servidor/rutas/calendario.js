@@ -20,7 +20,7 @@ async function generarMensajes(calendarioId, client) {
   // Resolver destino
   let destino = null, contacto_id = null
   if (cal.wts_contacto_id && cal.celular_contacto) {
-    destino    = cal.celular_contacto
+    destino     = cal.celular_contacto
     contacto_id = cal.wts_contacto_id
   } else if (cal.wts_grupo_id && cal.wts_grupo_jid) {
     destino = cal.wts_grupo_jid
@@ -35,50 +35,72 @@ async function generarMensajes(calendarioId, client) {
     ORDER BY wts_calendario_alerta_id
   `, [calendarioId])
 
+  if (!alertas.length) return
+
   // Cancelar mensajes pendientes anteriores
   await client.query(`
     UPDATE wts_mensaje SET wts_mensaje_estado = 5, user_modifica = 'SISTEMA', fecha_modifica = NOW()
     WHERE  wts_calendario_id = $1 AND wts_mensaje_estado NOT IN (3, 5)
   `, [calendarioId])
 
-  const texto = cal.wts_calendario_mensaje_texto ||
-    `Recordatorio: ${cal.wts_calendario_titulo}`
+  const texto       = cal.wts_calendario_mensaje_texto || `Recordatorio: ${cal.wts_calendario_titulo}`
+  const repeticion  = parseInt(cal.wts_calendario_repeticion) || 0
+  const repFinStr   = cal.wts_calendario_repeticion_fin
+  const repFin      = repFinStr ? new Date(repFinStr) : null
 
-  const fechaEvento = new Date(cal.wts_calendario_fecha_evento)
+  // Construir lista de fechas de evento según repetición
+  const fechas = []
+  let fechaActual = new Date(cal.wts_calendario_fecha_evento)
 
-  for (const a of alertas) {
-    let fechaProg = new Date(fechaEvento)
-    const tipo  = a.wts_calendario_alerta_tipo
-    const valor = a.wts_calendario_alerta_valor
+  fechas.push(new Date(fechaActual))
 
-    if (tipo === 1) {
-      fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 86400000)
-    } else if (tipo === 2) {
-      fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 3600000)
-    } else if (tipo === 3) {
-      fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 60000)
-    } else if (tipo === 4) {
-      const [h, m] = valor.split(':')
-      fechaProg = new Date(fechaEvento)
-      fechaProg.setHours(parseInt(h), parseInt(m || 0), 0, 0)
-    } else if (tipo === 0) {
-      // Al momento del evento: mismo instante
-      fechaProg = new Date(fechaEvento)
-    } else {
-      continue
+  if (repeticion > 0 && repFin) {
+    while (true) {
+      let siguiente = new Date(fechaActual)
+      if      (repeticion === 1) siguiente.setDate(siguiente.getDate() + 1)       // diario
+      else if (repeticion === 2) siguiente.setDate(siguiente.getDate() + 7)       // semanal
+      else if (repeticion === 3) siguiente.setMonth(siguiente.getMonth() + 1)     // mensual
+
+      if (siguiente > repFin) break
+      fechas.push(new Date(siguiente))
+      fechaActual = siguiente
     }
+  }
 
-    await client.query(`
-      INSERT INTO wts_mensaje
-        (wts_contacto_id, wts_calendario_id, wts_calendario_alerta_id,
-         wts_mensaje_tipo, wts_mensaje_origen,
-         wts_mensaje_destino, wts_mensaje_texto,
-         wts_mensaje_fecha_programada, wts_mensaje_estado,
-         wts_mensaje_prioridad, wts_mensaje_intentos, user_crea)
-      VALUES ($1,$2,$3, 2,2, $4,$5, $6, 1, $7, 0, 'SISTEMA')
-    `, [contacto_id, calendarioId, a.wts_calendario_alerta_id,
-        destino, texto, fechaProg,
-        a.wts_calendario_alerta_prioridad || 2])
+  // Generar mensajes para cada fecha × cada alerta
+  for (const fechaEvento of fechas) {
+    for (const a of alertas) {
+      let fechaProg = new Date(fechaEvento)
+      const tipo  = a.wts_calendario_alerta_tipo
+      const valor = a.wts_calendario_alerta_valor
+
+      if      (tipo === 1) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 86400000)
+      else if (tipo === 2) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 3600000)
+      else if (tipo === 3) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 60000)
+      else if (tipo === 4) {
+        const [h, m] = valor.split(':')
+        fechaProg = new Date(fechaEvento)
+        fechaProg.setHours(parseInt(h), parseInt(m || 0), 0, 0)
+      } else if (tipo === 0) {
+        fechaProg = new Date(fechaEvento)
+      } else {
+        continue
+      }
+
+      await client.query(`
+        INSERT INTO wts_mensaje
+          (wts_contacto_id, wts_calendario_id, wts_calendario_alerta_id,
+           wts_mensaje_tipo, wts_mensaje_origen,
+           wts_mensaje_destino, wts_mensaje_texto,
+           wts_mensaje_fecha_programada, wts_mensaje_estado,
+           wts_mensaje_prioridad, wts_mensaje_intentos,
+           wts_cuenta_id, user_crea)
+        VALUES ($1,$2,$3, 2,2, $4,$5, $6, 1, $7, 0, $8, 'SISTEMA')
+      `, [contacto_id, calendarioId, a.wts_calendario_alerta_id,
+          destino, texto, fechaProg,
+          a.wts_calendario_alerta_prioridad || 2,
+          cal.wts_cuenta_id || 1])
+    }
   }
 }
 
@@ -193,7 +215,7 @@ router.get('/:id/mensajes', async (req, res) => {
 router.post('/', async (req, res) => {
   const { titulo, descripcion, fecha_evento, contacto_id, grupo_id,
           destino_libre, plantilla_id, mensaje_texto, repeticion,
-          repeticion_fin, alertas } = req.body || {}
+          repeticion_fin, alertas, cuenta_id } = req.body || {}
 
   if (!titulo)       return res.status(400).json({ ok: false, error: 'titulo es requerido' })
   if (!fecha_evento) return res.status(400).json({ ok: false, error: 'fecha_evento es requerido' })
@@ -210,13 +232,13 @@ router.post('/', async (req, res) => {
          wts_plantilla_id, wts_calendario_titulo, wts_calendario_descripcion,
          wts_calendario_fecha_evento, wts_calendario_estado,
          wts_calendario_mensaje_texto, wts_calendario_repeticion,
-         wts_calendario_repeticion_fin, user_crea, fecha_crea)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,NOW())
+         wts_calendario_repeticion_fin, wts_cuenta_id, user_crea, fecha_crea)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$9,$10,$11,$12,NOW())
       RETURNING wts_calendario_id AS id
     `, [contacto_id||null, grupo_id||null, destino_libre||null,
         plantilla_id||null, titulo, descripcion||null, fecha_evento,
         mensaje_texto||null, repeticion||0, repeticion_fin||null,
-        req.usuario.email])
+        cuenta_id||1, req.usuario.email])
 
     if (Array.isArray(alertas)) {
       for (const a of alertas) {
@@ -229,6 +251,8 @@ router.post('/', async (req, res) => {
         `, [id, a.tipo, a.valor, a.descripcion||null, a.prioridad||2, req.usuario.email])
       }
     }
+
+    await generarMensajes(id, client)
 
     await client.query('COMMIT')
     res.status(201).json({ ok: true, id })
@@ -245,7 +269,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   const { titulo, descripcion, fecha_evento, contacto_id, grupo_id,
           destino_libre, plantilla_id, mensaje_texto, repeticion,
-          repeticion_fin, alertas, estado } = req.body || {}
+          repeticion_fin, alertas, estado, cuenta_id } = req.body || {}
 
   const client = await pool.connect()
   try {
@@ -296,6 +320,7 @@ router.put('/:id', async (req, res) => {
         wts_calendario_repeticion    = COALESCE($10, wts_calendario_repeticion),
         wts_calendario_repeticion_fin= $11,
         wts_calendario_estado        = COALESCE($12, wts_calendario_estado),
+        wts_cuenta_id                = COALESCE($14, wts_cuenta_id),
         user_modifica = $13, fecha_modifica = NOW()
       WHERE wts_calendario_id = $1
     `, [req.params.id,
@@ -304,38 +329,30 @@ router.put('/:id', async (req, res) => {
         fecha_evento||null, mensaje_texto||null,
         repeticion!=null ? repeticion : null, repeticion_fin||null,
         estado!=null ? estado : null,
-        req.usuario.email])
+        req.usuario.email, cuenta_id||null])
 
-    if (Array.isArray(alertas)) {
-      if (alertasCambiaron) {
-        // Alertas cambiaron → reemplazar y dejar que el trigger regenere mensajes
-        await client.query(
-          'UPDATE wts_mensaje SET wts_calendario_alerta_id = NULL WHERE wts_calendario_id = $1',
-          [req.params.id])
-        await client.query(
-          'DELETE FROM wts_calendario_alerta WHERE wts_calendario_id = $1',
-          [req.params.id])
-        for (const a of alertas) {
-          await client.query(`
-            INSERT INTO wts_calendario_alerta
-              (wts_calendario_id, wts_calendario_alerta_tipo, wts_calendario_alerta_valor,
-               wts_calendario_alerta_descripcion, wts_calendario_alerta_prioridad,
-               wts_calendario_alerta_estado, user_crea, fecha_crea)
-            VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
-          `, [req.params.id, a.tipo, a.valor, a.descripcion||null, a.prioridad||2, req.usuario.email])
-        }
-        // El trigger cancela pendientes y crea nuevos con las alertas actualizadas
-
-      } else if (fechaCambio) {
-        // Solo cambió la fecha → disparar el trigger con un UPDATE noop en alertas
-        // El trigger lee la nueva fecha del evento (ya actualizada arriba) y recalcula
+    if (Array.isArray(alertas) && alertasCambiaron) {
+      // Reemplazar alertas
+      await client.query(
+        'UPDATE wts_mensaje SET wts_calendario_alerta_id = NULL WHERE wts_calendario_id = $1',
+        [req.params.id])
+      await client.query(
+        'DELETE FROM wts_calendario_alerta WHERE wts_calendario_id = $1',
+        [req.params.id])
+      for (const a of alertas) {
         await client.query(`
-          UPDATE wts_calendario_alerta
-          SET wts_calendario_alerta_estado = wts_calendario_alerta_estado
-          WHERE wts_calendario_id = $1
-        `, [req.params.id])
+          INSERT INTO wts_calendario_alerta
+            (wts_calendario_id, wts_calendario_alerta_tipo, wts_calendario_alerta_valor,
+             wts_calendario_alerta_descripcion, wts_calendario_alerta_prioridad,
+             wts_calendario_alerta_estado, user_crea, fecha_crea)
+          VALUES ($1,$2,$3,$4,$5,1,$6,NOW())
+        `, [req.params.id, a.tipo, a.valor, a.descripcion||null, a.prioridad||2, req.usuario.email])
       }
-      // Si no cambió ni fecha ni alertas: solo se actualizó el texto/título del evento
+    }
+
+    // Regenerar mensajes si cambió fecha, alertas o repetición
+    if (fechaCambio || alertasCambiaron) {
+      await generarMensajes(parseInt(req.params.id), client)
     }
 
     await client.query('COMMIT')

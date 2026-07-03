@@ -44,6 +44,7 @@
           <li class="nav-item"><a href="plantillas.html" class="nav-link"><i class="nav-icon fas fa-file-alt"></i><p>Plantillas</p></a></li>
           <li class="nav-item"><a href="calendario.html" class="nav-link"><i class="nav-icon fas fa-calendar-alt"></i><p>Calendario</p></a></li>
           <li class="nav-item"><a href="reportes.html" class="nav-link"><i class="nav-icon fas fa-chart-bar"></i><p>Reportes</p></a></li>
+          <li class="nav-item"><a href="cuentas.html" class="nav-link"><i class="nav-icon fas fa-mobile-alt"></i><p>Cuentas WA</p></a></li>
         </ul>
       </nav>
     </div>
@@ -133,6 +134,22 @@
           </div>
         </div>
 
+        <div class="row">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-mobile-alt mr-2" style="color:#00d4ff"></i>Estado de cuentas WhatsApp
+                <a href="cuentas.html" class="btn btn-sm btn-outline-info float-right">
+                  <i class="fas fa-cog mr-1"></i>Administrar
+                </a>
+              </div>
+              <div class="card-body p-2">
+                <div id="badges-cuentas" class="d-flex flex-wrap gap-2 p-2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
   </div>
@@ -209,7 +226,24 @@ async function cargarDashboard() {
   }
 }
 
+async function cargarBadgesCuentas() {
+  try {
+    const resp = await Auth.fetch(CONFIG.BASE_URL + '/api/cuentas')
+    const { datos } = await resp.json()
+    const contenedor = document.getElementById('badges-cuentas')
+    contenedor.innerHTML = datos.map(c => `
+      <span class="badge badge-pill px-3 py-2 mr-2 mb-2" style="font-size:13px;background:${c.conectado ? '#28a745' : '#dc3545'}">
+        <i class="fas fa-${c.conectado ? 'check-circle' : 'times-circle'} mr-1"></i>
+        ${c.nombre}${c.numero ? ' · ' + c.numero : ''}
+      </span>
+    `).join('')
+  } catch (err) {
+    console.error('Error cargando cuentas:', err)
+  }
+}
+
 cargarDashboard()
+cargarBadgesCuentas()
 </script>
 </body>
 </html>
