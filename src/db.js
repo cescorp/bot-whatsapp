@@ -47,20 +47,21 @@ function resolverTexto(plantillaTexto, fila) {
 
 // Consulta mensajes pendientes dentro de la ventana de tiempo configurada en BD.
 // Hace JOIN con plantilla (si existe) y calendario para tener todas las variables disponibles.
-async function obtenerPendientes() {
+async function obtenerPendientes(cuentaId = 1) {
   const ventana = await obtenerConfig('VENTANA_MINUTOS', process.env.VENTANA_MINUTOS || '15')
   const client  = await pool.connect()
 
   try {
   await client.query("SET timezone = 'America/Guayaquil'")
   const { rows: [tzRow] } = await client.query("SELECT NOW() AS ahora")
-  console.log('[DB] NOW() en bot:', tzRow.ahora, '| ventana:', ventana)
+  console.log(`Fecha Hora DB en bot: ${tzRow.ahora} | Rango Envio: ${ventana}`)
   const { rows } = await client.query(`
     SELECT
       m.wts_mensaje_id                AS id,
       m.wts_mensaje_estado            AS estado,
       m.wts_mensaje_destino           AS celular,
       m.wts_mensaje_texto             AS mensaje,
+      m.wts_cuenta_id                 AS cuenta_id,
       p.wts_plantilla_texto           AS plantilla_texto,
       concat(c.wts_contacto_nombres, ' ', c.wts_contacto_apellidos) AS nombre,
       cal.wts_calendario_titulo       AS titulo,
@@ -74,6 +75,7 @@ async function obtenerPendientes() {
     LEFT JOIN public.wts_calendario cal
         ON cal.wts_calendario_id = m.wts_calendario_id
     WHERE m.wts_mensaje_estado = 1
+      AND COALESCE(m.wts_cuenta_id, 1) = $2
       AND m.wts_mensaje_fecha_programada
           BETWEEN NOW() - ($1 || ' minutes')::INTERVAL AND NOW()
       AND (
@@ -83,7 +85,7 @@ async function obtenerPendientes() {
     ORDER BY m.wts_mensaje_prioridad        DESC,
              m.wts_mensaje_fecha_programada ASC,
              m.wts_mensaje_id              ASC
-  `, [ventana])
+  `, [ventana, cuentaId])
 
   return rows.map(fila => ({
     ...fila,
@@ -135,4 +137,14 @@ async function marcarError(id, error) {
   await registrarLog(id, 1, 4, `Error: ${detalle}`)
 }
 
-module.exports = { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig }
+async function obtenerCuentasActivas() {
+  const { rows } = await pool.query(`
+    SELECT wts_cuenta_id AS id, wts_cuenta_nombre AS nombre, wts_cuenta_numero AS numero
+    FROM wts_cuenta
+    WHERE wts_cuenta_estado = 1
+    ORDER BY wts_cuenta_id
+  `)
+  return rows
+}
+
+module.exports = { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas }
