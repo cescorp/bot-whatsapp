@@ -147,4 +147,28 @@ async function obtenerCuentasActivas() {
   return rows
 }
 
-module.exports = { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas }
+async function guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, marcadoLeido, fechaMensaje }) {
+  await pool.query(`
+    INSERT INTO wts_mensaje_recibido (
+      wts_cuenta_id,
+      wts_mensaje_recibido_jid,
+      wts_mensaje_recibido_nombre,
+      wts_mensaje_recibido_texto,
+      wts_mensaje_recibido_es_grupo,
+      wts_mensaje_recibido_leido,
+      wts_mensaje_recibido_fecha,
+      user_crea,
+      fecha_crea
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'BOT_WHATSAPP', NOW())
+  `, [
+    cuentaId,
+    jid,
+    nombre       || null,
+    texto        || null,
+    esGrupo      ? 1 : 0,
+    marcadoLeido ? 1 : 0,
+    fechaMensaje || new Date(),
+  ])
+}
+
+module.exports = { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido }

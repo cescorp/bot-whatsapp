@@ -10,6 +10,7 @@ const pino   = require('pino')
 const path   = require('path')
 const fs     = require('fs')
 const logger = require('./logger')
+const { obtenerConfig, guardarMensajeRecibido } = require('./db')
 
 const AUTH_BASE   = path.join(__dirname, 'auth')
 const GRUPOS_FILE = path.join('/app', 'grupos.txt')
@@ -35,8 +36,9 @@ async function iniciarCuenta(cuentaId, nombre) {
   const sock = makeWASocket({
     version,
     auth:   state,
-    logger: pino({ level: 'silent' }),
+    logger: pino({ level: 'info' }),
     printQRInTerminal: false,
+    getMessage: async () => ({ conversation: '' }),
   })
 
   cuentas.set(cuentaId, { sock, conectado: false, nombre })
@@ -66,6 +68,52 @@ async function iniciarCuenta(cuentaId, nombre) {
         : `[Cuenta ${cuentaId}] Sesión cerrada — escanea QR de nuevo`)
 
       if (reconectar) setTimeout(() => iniciarCuenta(cuentaId, nombre), 5000)
+    }
+  })
+
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    logger.info({ type, count: messages.length, cuentaId }, 'messages.upsert recibido')
+    if (type !== 'notify') return
+
+    const leer = await obtenerConfig('LEER_MENSAJES', 'NO')
+    if (leer !== 'SI') return
+
+    const marcarLeido = await obtenerConfig('LEER_MENSAJES_MARCAR_LEIDO', 'NO')
+
+    for (const message of messages) {
+      try {
+        if (message.key.fromMe) continue
+        if (message.key.remoteJid === 'status@broadcast') continue
+        if (!message.message)   continue
+
+        const jid    = message.key.remoteJid
+        const nombre = message.pushName || null
+        const texto  =
+          message.message.conversation ||
+          message.message.extendedTextMessage?.text ||
+          message.message.imageMessage?.caption ||
+          message.message.videoMessage?.caption ||
+          null
+
+        const esGrupo    = jid.endsWith('@g.us')
+        const fechaMensaje = message.messageTimestamp
+          ? new Date(Number(message.messageTimestamp) * 1000)
+          : new Date()
+
+        await guardarMensajeRecibido(cuentaId, {
+          jid, nombre, texto, esGrupo,
+          marcadoLeido: marcarLeido === 'SI',
+          fechaMensaje,
+        })
+
+        logger.info({ jid, cuentaId, esGrupo }, 'Mensaje recibido guardado')
+
+        if (marcarLeido === 'SI') {
+          await sock.readMessages([message.key])
+        }
+      } catch (err) {
+        logger.error({ err, cuentaId }, 'Error procesando mensaje recibido')
+      }
     }
   })
 }
