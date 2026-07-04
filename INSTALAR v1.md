@@ -274,6 +274,62 @@ Respuesta esperada:
 
 ---
 
+## Recepción de mensajes entrantes (opcional)
+
+Además de enviar, el bot puede **guardar en base de datos los mensajes que le escriben** a cualquier cuenta vinculada, incluyendo el chat "Yo" (self-chat).
+
+### Activar/desactivar
+
+Se controla desde `wts_configuracion`, sin reiniciar el bot:
+
+```sql
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES';
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES_MARCAR_LEIDO';
+```
+
+| Clave | Valores | Efecto |
+|---|---|---|
+| `LEER_MENSAJES` | `SI` / `NO` | Activa/desactiva el guardado de mensajes entrantes |
+| `LEER_MENSAJES_MARCAR_LEIDO` | `SI` / `NO` | Si `SI`, marca el mensaje como leído en WhatsApp (palomitas azules) |
+
+### Tabla `wts_mensaje_recibido`
+
+| Columna | Descripción |
+|---|---|
+| `wts_cuenta_id` | Cuenta WhatsApp que recibió el mensaje |
+| `wts_mensaje_recibido_jid` | JID del remitente: número, grupo (`@g.us`), estado (`status@broadcast`) o identificador de privacidad (`@lid`) |
+| `wts_mensaje_recibido_texto` | Texto del mensaje (`null` si no es texto) |
+| `wts_mensaje_recibido_es_grupo` | `1` si viene de un grupo |
+| `wts_mensaje_recibido_yo` | `1` si el mensaje es del propio chat "Yo" (self-chat) |
+| `wts_mensaje_recibido_leido` | `1` si se marcó como leído en WhatsApp |
+
+### Qué se ignora automáticamente
+
+- Actualizaciones de Estado de WhatsApp (`status@broadcast`).
+- Ecos de mensajes que el propio bot envía — excepto el chat "Yo", que sí se guarda con `wts_mensaje_recibido_yo = 1`.
+
+> **Importante:** WhatsApp puede entregar el remitente en un formato nuevo de privacidad (`@lid`) en vez del número tradicional. El bot ya lo maneja automáticamente.
+
+### ⚠️ Requiere reconstruir la imagen, no solo reiniciar
+
+`whatsapp.js`, `db.js` e `index.js` no son volumen montado — se copian dentro de la imagen Docker en el build. Cualquier cambio en este flujo necesita:
+
+```powershell
+docker compose down
+docker compose up -d --build
+```
+
+### Verificar que está guardando
+
+```sql
+SELECT wts_mensaje_recibido_jid, wts_mensaje_recibido_texto, wts_mensaje_recibido_yo, fecha_crea
+FROM wts_mensaje_recibido
+ORDER BY fecha_crea DESC
+LIMIT 10;
+```
+
+---
+
 ## Comandos útiles post-instalación
 
 ```powershell

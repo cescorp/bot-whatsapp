@@ -249,6 +249,71 @@ SELECT
 
 ---
 
+## Recepción de mensajes entrantes (opcional)
+
+Además de enviar, el bot puede **guardar en base de datos los mensajes que le escriben** (a cualquier cuenta vinculada), incluyendo el chat "Yo" (self-chat).
+
+### Activar/desactivar — `wts_configuracion`
+
+Sin reiniciar el bot:
+
+```sql
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES';
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES_MARCAR_LEIDO';
+```
+
+| Clave | Valores | Efecto |
+|---|---|---|
+| `LEER_MENSAJES` | `SI` / `NO` | Activa/desactiva el guardado de mensajes entrantes |
+| `LEER_MENSAJES_MARCAR_LEIDO` | `SI` / `NO` | Si `SI`, marca el mensaje como leído en WhatsApp (palomitas azules) |
+
+### Tabla `wts_mensaje_recibido`
+
+| Columna | Descripción |
+|---|---|
+| `wts_cuenta_id` | Cuenta WhatsApp que recibió el mensaje |
+| `wts_mensaje_recibido_jid` | JID del remitente: `numero@s.whatsapp.net`, `numero@lid` (identificador de privacidad nuevo de WhatsApp), `grupo@g.us` o `status@broadcast` |
+| `wts_mensaje_recibido_nombre` | pushName del remitente |
+| `wts_mensaje_recibido_texto` | Texto del mensaje (`null` si no es texto: audio, sticker, etc.) |
+| `wts_mensaje_recibido_es_grupo` | `1` si viene de un grupo |
+| `wts_mensaje_recibido_yo` | `1` si el mensaje es del propio chat "Yo" (self-chat) |
+| `wts_mensaje_recibido_leido` | `1` si se marcó como leído en WhatsApp |
+| `wts_mensaje_recibido_fecha` | Fecha/hora original del mensaje según WhatsApp |
+
+### Qué se ignora automáticamente
+
+- Mensajes de Estados de WhatsApp (`status@broadcast`) — reacciones o publicaciones de estado de cualquier contacto.
+- Ecos de mensajes que el propio bot envía (scheduler, API, panel) — llegan con `fromMe: true` y no se guardan como "recibidos", excepto el chat "Yo".
+- El chat "Yo" (self-chat) sí se guarda con `wts_mensaje_recibido_yo = 1` aunque también venga con `fromMe: true` — se distingue comparando el JID contra `sock.authState.creds.me` (número y/o LID propio de la sesión), no contra un número fijo guardado en `wts_cuenta`.
+
+> WhatsApp introdujo un identificador de privacidad (`@lid`) que reemplaza al número de teléfono (`@s.whatsapp.net`) en algunos mensajes entrantes. El listener en `src/whatsapp.js` ya maneja ambos formatos — no requiere configuración adicional.
+
+### ⚠️ Este flujo requiere reconstruir la imagen
+
+`whatsapp.js`, `db.js` e `index.js` **no** están montados como volumen en `docker-compose.yml` (solo `src/auth` y `src/admin` lo están) — se copian dentro de la imagen en el build. Cualquier cambio en este flujo necesita:
+
+```powershell
+docker compose up -d --build
+```
+
+Un simple `docker compose restart` **no** aplica cambios de código en estos archivos.
+
+### Verificar que está guardando
+
+```sql
+SELECT wts_mensaje_recibido_jid, wts_mensaje_recibido_nombre, wts_mensaje_recibido_texto,
+       wts_mensaje_recibido_yo, wts_mensaje_recibido_fecha
+FROM wts_mensaje_recibido
+ORDER BY fecha_crea DESC
+LIMIT 10;
+```
+
+```powershell
+docker logs bot-whatsapp -f | Select-String "Mensaje recibido guardado"
+```
+
+---
+
 ## Comandos Docker
 
 ```powershell

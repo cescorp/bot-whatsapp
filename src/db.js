@@ -147,7 +147,7 @@ async function obtenerCuentasActivas() {
   return rows
 }
 
-async function guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, marcadoLeido, fechaMensaje }) {
+async function guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, esYo, marcadoLeido, fechaMensaje }) {
   await pool.query(`
     INSERT INTO wts_mensaje_recibido (
       wts_cuenta_id,
@@ -155,17 +155,19 @@ async function guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, m
       wts_mensaje_recibido_nombre,
       wts_mensaje_recibido_texto,
       wts_mensaje_recibido_es_grupo,
+      wts_mensaje_recibido_yo,
       wts_mensaje_recibido_leido,
       wts_mensaje_recibido_fecha,
       user_crea,
       fecha_crea
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'BOT_WHATSAPP', NOW())
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'BOT_WHATSAPP', NOW())
   `, [
     cuentaId,
     jid,
     nombre       || null,
     texto        || null,
     esGrupo      ? 1 : 0,
+    esYo         ? 1 : 0,
     marcadoLeido ? 1 : 0,
     fechaMensaje || new Date(),
   ])

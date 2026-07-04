@@ -3,6 +3,7 @@ const {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  jidNormalizedUser,
 } = require('@whiskeysockets/baileys')
 const qrcode = require('qrcode-terminal')
 const QRCode = require('qrcode')
@@ -82,11 +83,20 @@ async function iniciarCuenta(cuentaId, nombre) {
 
     for (const message of messages) {
       try {
-        if (message.key.fromMe) continue
-        if (message.key.remoteJid === 'status@broadcast') continue
+        const jid = message.key.remoteJid
+
+        // Propio número/LID de la sesión — se recalcula porque Baileys los va
+        // completando después de conectar (creds.me.lid llega tras el primer mensaje)
+        const me = sock.authState.creds.me
+        const propioJid = me?.id  ? jidNormalizedUser(me.id)  : null
+        const propioLid = me?.lid ? jidNormalizedUser(me.lid) : null
+        const esSelfChat = jid === propioJid || (propioLid && jid === propioLid)
+
+        // Se ignoran los ecos de mensajes salientes, excepto el chat "Yo" (self-chat)
+        if (message.key.fromMe && !esSelfChat) continue
+        if (jid === 'status@broadcast') continue
         if (!message.message)   continue
 
-        const jid    = message.key.remoteJid
         const nombre = message.pushName || null
         const texto  =
           message.message.conversation ||
@@ -102,11 +112,12 @@ async function iniciarCuenta(cuentaId, nombre) {
 
         await guardarMensajeRecibido(cuentaId, {
           jid, nombre, texto, esGrupo,
+          esYo: esSelfChat,
           marcadoLeido: marcarLeido === 'SI',
           fechaMensaje,
         })
 
-        logger.info({ jid, cuentaId, esGrupo }, 'Mensaje recibido guardado')
+        logger.info({ jid, cuentaId, esGrupo, esSelfChat }, 'Mensaje recibido guardado')
 
         if (marcarLeido === 'SI') {
           await sock.readMessages([message.key])

@@ -738,6 +738,67 @@ Invoke-RestMethod -Uri "http://localhost:3000/grupos" `
 
 ---
 
+## 3.7 — Activar la recepción de mensajes entrantes (opcional)
+
+Además de enviar, el bot puede **guardar en base de datos los mensajes que le escriben** a cualquier cuenta vinculada — incluyendo el chat "Yo" (self-chat).
+
+### a) Activar/desactivar desde la base de datos
+
+No requiere reiniciar el bot — se lee en cada mensaje que llega:
+
+```sql
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES';
+UPDATE wts_configuracion SET wts_configuracion_valor = 'SI' WHERE wts_configuracion_clave = 'LEER_MENSAJES_MARCAR_LEIDO';
+```
+
+| Clave | Valores | Efecto |
+|--------|---------|--------|
+| `LEER_MENSAJES` | `SI` / `NO` | Activa/desactiva el guardado de mensajes entrantes |
+| `LEER_MENSAJES_MARCAR_LEIDO` | `SI` / `NO` | Si `SI`, marca el mensaje como leído en WhatsApp (palomitas azules) |
+
+### b) Tabla `wts_mensaje_recibido`
+
+| Columna | Descripción |
+|---------|-------------|
+| `wts_cuenta_id` | Cuenta WhatsApp que recibió el mensaje |
+| `wts_mensaje_recibido_jid` | JID del remitente: número, grupo (`@g.us`), estado (`status@broadcast`) o identificador de privacidad nuevo de WhatsApp (`@lid`) |
+| `wts_mensaje_recibido_nombre` | Nombre del contacto según WhatsApp (pushName) |
+| `wts_mensaje_recibido_texto` | Texto del mensaje (`null` si no es texto: audio, sticker, etc.) |
+| `wts_mensaje_recibido_es_grupo` | `1` si viene de un grupo |
+| `wts_mensaje_recibido_yo` | `1` si el mensaje es del propio chat "Yo" (self-chat) |
+| `wts_mensaje_recibido_leido` | `1` si se marcó como leído en WhatsApp |
+
+### c) Qué se ignora automáticamente
+
+- Actualizaciones de Estado de WhatsApp (`status@broadcast`) — de cualquier contacto, no solo propias.
+- Ecos de mensajes que el propio bot envía (scheduler, API, panel) — excepto el chat "Yo", que sí se guarda con `wts_mensaje_recibido_yo = 1`.
+
+> ⚠️ WhatsApp introdujo un identificador de privacidad (`@lid`) que a veces reemplaza al número de teléfono tradicional en los mensajes entrantes. El bot ya maneja ambos formatos automáticamente — no requiere configuración adicional.
+
+### d) ⚠️ IMPORTANTE — este flujo necesita reconstruir la imagen
+
+`whatsapp.js`, `db.js` e `index.js` **no** están montados como volumen en `docker-compose.yml` (solo `src/auth` y `src/admin` lo están) — quedan copiados dentro de la imagen al construirla. Un simple `docker compose restart` **no** aplica cambios de código en estos archivos. Hay que reconstruir:
+
+```powershell
+docker compose up -d --build
+```
+
+### e) Verificar que está guardando
+
+```sql
+SELECT wts_mensaje_recibido_jid, wts_mensaje_recibido_nombre, wts_mensaje_recibido_texto,
+       wts_mensaje_recibido_yo, wts_mensaje_recibido_fecha
+FROM wts_mensaje_recibido
+ORDER BY fecha_crea DESC
+LIMIT 10;
+```
+
+```powershell
+docker logs bot-whatsapp -f | Select-String "Mensaje recibido guardado"
+```
+
+---
+
 ## Comandos de uso frecuente
 
 ```powershell
@@ -934,6 +995,37 @@ Luego abrir el QR:
 start C:\bot-whatsapp\src\auth\qr.png
 ```
 → volver a **[3.2 Vincular WhatsApp](#32--vincular-whatsapp-escanear-qr)**
+
+---
+
+## 4I — No se guardan los mensajes que me escriben
+
+**Síntoma:** Activaste `LEER_MENSAJES = 'SI'` pero no aparecen registros en `wts_mensaje_recibido`.
+
+a) Verificar que el parámetro está en `SI` y activo (`wts_configuracion_estado = 1`):
+   ```sql
+   SELECT wts_configuracion_clave, wts_configuracion_valor, wts_configuracion_estado
+   FROM wts_configuracion
+   WHERE wts_configuracion_clave IN ('LEER_MENSAJES','LEER_MENSAJES_MARCAR_LEIDO');
+   ```
+
+b) **Causa más común:** el código de este flujo se editó pero la imagen Docker no se reconstruyó. Verificar con:
+   ```powershell
+   docker exec bot-whatsapp grep -c "guardarMensajeRecibido" /app/src/whatsapp.js
+   ```
+   Si devuelve `0`, la imagen está desactualizada — reconstruir:
+   ```powershell
+   docker compose up -d --build
+   ```
+   → volver a **[3.7 Activar la recepción de mensajes entrantes](#37--activar-la-recepción-de-mensajes-entrantes-opcional)**
+
+c) Revisar los logs en vivo mientras alguien envía un mensaje de prueba:
+   ```powershell
+   docker logs -f bot-whatsapp
+   ```
+   Debe aparecer `messages.upsert recibido` con `"type":"notify"`. Si el `type` es `"append"`, ese mensaje en particular no se procesa (sincronización, no mensaje nuevo en vivo).
+
+d) Si el mensaje es al chat "Yo" y sigue sin guardarse, confirmar que el log `Mensaje recibido guardado` incluye `"esSelfChat":true` — si no, revisar que `src/whatsapp.js` tenga la comparación contra `sock.authState.creds.me` (número y LID propios), no un número fijo.
 
 ---
 ---
