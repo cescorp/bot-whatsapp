@@ -1,12 +1,47 @@
 require('dotenv').config()
 const { iniciarBot, iniciarCuenta, enviarMensaje, listarGrupos, estaConectado, cuentas } = require('./whatsapp')
-const { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas } = require('./db')
+const {
+  pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas,
+  obtenerEstadoWatchdog, actualizarPingWatchdog, marcarAlertaWatchdogEnviada,
+} = require('./db')
 const { iniciarAPI } = require('./api/server')
-const { enviarAlertaDesconexion } = require('./mailer')
+const { enviarAlertaDesconexion, enviarAlertaWatchdog } = require('./mailer')
 const logger = require('./logger')
 
 // Contador de ciclos sin conexión por cuenta  Map<cuentaId, number>
 const ciclosSinConexion = new Map()
+
+// Watchdog de lectura — solo corre si wts_cuenta_watchdog_activo = 1 (ver Activar_Consola_Comando.md)
+async function revisarWatchdog(cuenta) {
+  const { id: cuentaId, nombre, numero } = cuenta
+  const estado = await obtenerEstadoWatchdog(cuentaId)
+  if (!estado || estado.activo !== 1) return
+
+  const intervaloMin = parseInt(await obtenerConfig('WATCHDOG_INTERVALO_MINUTOS', '60'))
+  const timeoutMin   = parseInt(await obtenerConfig('WATCHDOG_TIMEOUT_MINUTOS', '15'))
+
+  const ahora              = Date.now()
+  const ultimoPing         = estado.ultimo_ping ? new Date(estado.ultimo_ping).getTime() : null
+  const ultimaConfirmacion = estado.ultima_confirmacion ? new Date(estado.ultima_confirmacion).getTime() : null
+  const pingSinConfirmar   = ultimoPing && (!ultimaConfirmacion || ultimaConfirmacion < ultimoPing)
+
+  if (pingSinConfirmar && (ahora - ultimoPing) > timeoutMin * 60000 && estado.alerta_enviada !== 1) {
+    const minutos = Math.round((ahora - ultimoPing) / 60000)
+    await enviarAlertaWatchdog(nombre, minutos)
+    await marcarAlertaWatchdogEnviada(cuentaId)
+    logger.warn({ cuentaId, minutos }, 'Watchdog: lectura de mensajes sin confirmar — alerta enviada')
+  }
+
+  if (!ultimoPing || (ahora - ultimoPing) >= intervaloMin * 60000) {
+    try {
+      await enviarMensaje(cuentaId, numero, 'PING_WATCHDOG_' + Date.now())
+      await actualizarPingWatchdog(cuentaId)
+      logger.info({ cuentaId }, 'Watchdog: ping enviado')
+    } catch (err) {
+      logger.error({ err, cuentaId }, 'Watchdog: error enviando ping')
+    }
+  }
+}
 
 async function procesarPendientes() {
   // Obtener cuentas activas desde BD
@@ -40,6 +75,8 @@ async function procesarPendientes() {
     }
 
     ciclosSinConexion.set(cuentaId, 0)
+
+    await revisarWatchdog(cuenta)
 
     let pendientes
     try {

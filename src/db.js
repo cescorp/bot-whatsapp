@@ -173,4 +173,125 @@ async function guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, e
   ])
 }
 
-module.exports = { pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido }
+// ── Watchdog de lectura (estado por cuenta, ver Activar_Consola_Comando.md) ──
+
+async function obtenerEstadoWatchdog(cuentaId) {
+  const { rows } = await pool.query(`
+    SELECT wts_cuenta_watchdog_activo             AS activo,
+           wts_cuenta_watchdog_ultimo_ping         AS ultimo_ping,
+           wts_cuenta_watchdog_ultima_confirmacion AS ultima_confirmacion,
+           wts_cuenta_watchdog_alerta_enviada      AS alerta_enviada
+    FROM wts_cuenta
+    WHERE wts_cuenta_id = $1
+  `, [cuentaId])
+  return rows[0] || null
+}
+
+async function actualizarPingWatchdog(cuentaId) {
+  await pool.query(`
+    UPDATE wts_cuenta
+    SET wts_cuenta_watchdog_ultimo_ping    = NOW(),
+        wts_cuenta_watchdog_alerta_enviada = 0
+    WHERE wts_cuenta_id = $1
+  `, [cuentaId])
+}
+
+async function confirmarWatchdog(cuentaId) {
+  await pool.query(`
+    UPDATE wts_cuenta
+    SET wts_cuenta_watchdog_ultima_confirmacion = NOW()
+    WHERE wts_cuenta_id = $1
+  `, [cuentaId])
+}
+
+async function marcarAlertaWatchdogEnviada(cuentaId) {
+  await pool.query(`
+    UPDATE wts_cuenta
+    SET wts_cuenta_watchdog_alerta_enviada = 1
+    WHERE wts_cuenta_id = $1
+  `, [cuentaId])
+}
+
+// ── Consola de comandos (ver Activar_Consola_Comando.md) ──────────────────
+
+async function obtenerConsolaActiva(cuentaId) {
+  const { rows } = await pool.query(`
+    SELECT wts_cuenta_consola_activo AS consola_activo
+    FROM wts_cuenta
+    WHERE wts_cuenta_id = $1
+  `, [cuentaId])
+  return rows[0]?.consola_activo === 1
+}
+
+// Busca el primer comando activo (de la cuenta o global) cuyos campos clave
+// coincidan con alguna de las claves presentes en el mensaje ya parseado.
+async function buscarComando(cuentaId, campos) {
+  const { rows } = await pool.query(`
+    SELECT wts_comando_id           AS id,
+           wts_comando_nombre       AS nombre,
+           wts_comando_tipo         AS tipo,
+           wts_comando_campos_clave AS campos_clave,
+           wts_comando_config       AS config,
+           wts_comando_respuesta    AS respuesta
+    FROM wts_comando
+    WHERE wts_comando_estado = 1
+      AND (wts_comando_cuenta_id IS NULL OR wts_comando_cuenta_id = $1)
+    ORDER BY wts_comando_id
+  `, [cuentaId])
+
+  const clavesMensaje = Object.keys(campos)
+  return rows.find(c => c.campos_clave.some(clave => clavesMensaje.includes(clave))) || null
+}
+
+// Crea un evento de calendario (y su alerta, si aplica) en una sola transacción.
+// El destino es el propio número de la cuenta (destino_libre) — el recordatorio
+// vuelve al mismo chat "Yo" que lo creó.
+// El trigger de BD (trg_wts_calendario_ai / trg_wts_calendario_alerta_ai) genera
+// el wts_mensaje correspondiente — no hay que tocar esa parte.
+async function crearRecordatorioDesdeComando({ cuentaId, titulo, mensajeTexto, fechaEvento, alerta }) {
+  const client = await pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const { rows: cuentaRows } = await client.query(
+      `SELECT wts_cuenta_numero AS numero FROM wts_cuenta WHERE wts_cuenta_id = $1`, [cuentaId]
+    )
+    const destinoLibre = cuentaRows[0]?.numero
+    if (!destinoLibre) throw new Error(`Cuenta ${cuentaId} sin numero registrado`)
+
+    const { rows } = await client.query(`
+      INSERT INTO wts_calendario (
+        wts_calendario_titulo, wts_calendario_mensaje_texto,
+        wts_calendario_fecha_evento, wts_calendario_destino_libre,
+        wts_calendario_estado, user_crea, fecha_crea
+      ) VALUES ($1, $2, $3, $4, 1, 'BOT_WHATSAPP', NOW())
+      RETURNING wts_calendario_id AS id
+    `, [titulo, mensajeTexto || null, fechaEvento, destinoLibre])
+
+    const calendarioId = rows[0].id
+
+    if (alerta) {
+      await client.query(`
+        INSERT INTO wts_calendario_alerta (
+          wts_calendario_id, wts_calendario_alerta_tipo,
+          wts_calendario_alerta_valor, wts_calendario_alerta_prioridad,
+          wts_calendario_alerta_estado, user_crea, fecha_crea
+        ) VALUES ($1, $2, $3, 5, 1, 'BOT_WHATSAPP', NOW())
+      `, [calendarioId, alerta.tipo, String(alerta.valor)])
+    }
+
+    await client.query('COMMIT')
+    return calendarioId
+  } catch (err) {
+    await client.query('ROLLBACK')
+    throw err
+  } finally {
+    client.release()
+  }
+}
+
+module.exports = {
+  pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido,
+  obtenerEstadoWatchdog, actualizarPingWatchdog, confirmarWatchdog, marcarAlertaWatchdogEnviada,
+  obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando,
+}

@@ -1,4 +1,4 @@
-# Manual Técnico — Envío de Mensajes e Inicio de Sesión
+# Manual Técnico — Envío y Recepción de Mensajes e Inicio de Sesión
 
 ## Stack
 
@@ -183,22 +183,102 @@ Si una cuenta lleva N ciclos consecutivos sin conexión (umbral configurable en 
 
 ---
 
-## 6. Tablas principales
+## 6. Recepción de mensajes entrantes (`src/whatsapp.js → messages.upsert`)
+
+### 6.1 Activación
+
+Controlado por `wts_configuracion`, leído en **cada** mensaje entrante (permite cambiar en caliente sin reiniciar el bot):
+
+| Clave | Valores | Efecto |
+|---|---|---|
+| `LEER_MENSAJES` | `SI` / `NO` | Habilita el guardado de mensajes entrantes en BD |
+| `LEER_MENSAJES_MARCAR_LEIDO` | `SI` / `NO` | Si `SI`, llama `sock.readMessages()` (palomitas azules) |
+
+### 6.2 Flujo del listener
+
+```
+sock.ev.on('messages.upsert', ({ messages, type }) => {
+  type !== 'notify'                 → return   (ignora batches de sync/history: type='append')
+  LEER_MENSAJES !== 'SI'             → return
+
+  por cada message:
+    jid = message.key.remoteJid
+    propioJid / propioLid = identidad de la sesión (ver 6.3)
+    esSelfChat = jid === propioJid || jid === propioLid
+
+    fromMe === true && !esSelfChat    → continue   (eco de mensaje saliente normal)
+    jid === 'status@broadcast'        → continue   (Estados de cualquier contacto)
+    !message.message                  → continue   (sin contenido: reacción, protocolo, etc.)
+
+    texto = conversation | extendedTextMessage.text | imageMessage.caption | videoMessage.caption
+
+    guardarMensajeRecibido(cuentaId, { jid, nombre, texto, esGrupo, esYo: esSelfChat, ... })
+
+    LEER_MENSAJES_MARCAR_LEIDO === 'SI' → sock.readMessages([message.key])
+})
+```
+
+### 6.3 Reconocimiento del chat "Yo" (self-chat)
+
+**El problema:** cuando envías un mensaje al chat "Yo" desde el mismo número vinculado al bot, WhatsApp marca ese mensaje con `fromMe: true` — exactamente igual que cualquier mensaje que el bot envía a un tercero (scheduler, API, panel). No existe ningún campo booleano tipo "es self-chat"; lo único que distingue el caso es **a quién** va dirigido (`message.key.remoteJid`) comparado contra la identidad de la propia cuenta.
+
+**Primer intento (no funcionó):** comparar `remoteJid` contra `wts_cuenta_numero@s.whatsapp.net` (el número guardado en la tabla `wts_cuenta`). Falló porque WhatsApp entrega algunos mensajes —incluido en ciertos casos el propio chat "Yo"— usando un identificador de privacidad nuevo, `@lid` (Linked ID): un número interno sin relación aparente con el número de teléfono. Comparar contra un valor fijo de BD no cubre ese formato.
+
+**Solución:** Baileys ya resuelve y mantiene ambas identidades de la sesión activa en `sock.authState.creds.me`, así que se compara contra eso en vez de un dato estático:
+
+```js
+const me         = sock.authState.creds.me
+const propioJid  = me?.id  ? jidNormalizedUser(me.id)  : null   // 593...@s.whatsapp.net
+const propioLid  = me?.lid ? jidNormalizedUser(me.lid) : null   // xxxxxxxx@lid
+const esSelfChat = jid === propioJid || (propioLid && jid === propioLid)
+
+if (message.key.fromMe && !esSelfChat) continue
+```
+
+`jidNormalizedUser()` (utilidad de Baileys) quita el sufijo de dispositivo (`:31`) antes de comparar. Se recalcula en cada mensaje —no se cachea al conectar— porque `creds.me.lid` puede llegar un momento después de la conexión inicial (Baileys lo completa al recibir el primer mensaje con formato LID).
+
+**Resultado:** se descartan los ecos de mensajes salientes normales, pero se deja pasar y se guarda el chat "Yo" sin importar en qué formato de JID llegue ese mensaje.
+
+### 6.4 Tabla `wts_mensaje_recibido`
+
+| Columna | Descripción |
+|---|---|
+| `wts_cuenta_id` | Cuenta que recibió el mensaje |
+| `wts_mensaje_recibido_jid` | JID del remitente (`@s.whatsapp.net`, `@lid`, `@g.us` o `status@broadcast`) |
+| `wts_mensaje_recibido_nombre` | pushName del remitente |
+| `wts_mensaje_recibido_texto` | Texto del mensaje (`null` si no aplica) |
+| `wts_mensaje_recibido_es_grupo` | `1` si `jid` termina en `@g.us` |
+| `wts_mensaje_recibido_yo` | `1` si `esSelfChat` fue `true` (ver 6.3) |
+| `wts_mensaje_recibido_leido` | `1` si se marcó como leído en WhatsApp |
+| `wts_mensaje_recibido_fecha` | `messageTimestamp` original de WhatsApp |
+
+### 6.5 Por qué se ignora `status@broadcast`
+
+Es el canal genérico de Estados de WhatsApp: cualquier contacto que publique o reaccione a un estado genera un evento `messages.upsert` con `remoteJid = status@broadcast`, sin relación con un mensaje de chat real dirigido al bot. Se descarta explícitamente para no mezclar ese ruido con mensajes genuinos.
+
+### 6.6 Reconstruir imagen, no solo reiniciar
+
+`whatsapp.js` y `db.js` **no** son volumen montado en `docker-compose.yml` (solo `src/auth` y `src/admin` lo son) — quedan copiados dentro de la imagen en el build. Cambios en este flujo requieren `docker compose up -d --build`; un `docker compose restart` deja corriendo el código anterior sin avisar del error.
+
+---
+
+## 7. Tablas principales
 
 | Tabla | Función |
 |---|---|
 | `wts_cuenta` | Cuentas WhatsApp (id, nombre, número, estado) |
 | `wts_mensaje` | Mensajes con estado, fecha programada, destino, texto |
 | `wts_mensaje_log` | Auditoría de cambios de estado |
+| `wts_mensaje_recibido` | Mensajes entrantes guardados (ver sección 6) |
 | `wts_plantilla` | Plantillas con variables `{{...}}` |
 | `wts_calendario` | Eventos que generan mensajes repetidos |
 | `wts_grupo` | Grupos sincronizados desde WhatsApp |
-| `wts_configuracion` | Parámetros del sistema (intervalo, ventana, etc.) |
+| `wts_configuracion` | Parámetros del sistema (intervalo, ventana, LEER_MENSAJES, etc.) |
 | `sis_parametros` | Parámetros globales (umbral desconexión, etc.) |
 
 ---
 
-## 7. Archivos clave
+## 8. Archivos clave
 
 | Archivo | Responsabilidad |
 |---|---|

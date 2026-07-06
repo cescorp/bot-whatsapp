@@ -799,6 +799,98 @@ docker logs bot-whatsapp -f | Select-String "Mensaje recibido guardado"
 
 ---
 
+## 3.8 — Configurar la consola de comandos y la API de Gastos (opcional)
+
+El chat "Yo" (self-chat) puede reconocer mensajes con formato `Clave: valor` y ejecutar acciones — crear recordatorios en el calendario, o consultar la API externa de Control de Gastos. Diseño completo en `Activar_Consola_Comando.md`; aquí solo la puesta en marcha.
+
+### a) Activar la consola por cuenta
+
+```sql
+UPDATE wts_cuenta SET wts_cuenta_consola_activo = 1 WHERE wts_cuenta_id = 1;
+```
+
+### b) Comando de recordatorio (no requiere API externa)
+
+Envía al chat "Yo":
+```
+Titulo: Reunion equipo;
+Mensaje: No olvides la reunion;
+Fecha: 30-07-2026 09:00;
+Recordatorio: 1 hora antes
+```
+El bot responde confirmando y crea el evento en `wts_calendario` (mismo mecanismo del Flujo 2, sección "Cómo funciona el trigger de calendario").
+
+### c) Configurar la API de Gastos (para el comando `consulta_gastos`)
+
+**1. Variable de entorno — API key fija, no va en la base de datos:**
+```env
+# ── API EXTERNA GASTOS ──────────────────────────────────────────
+API_GASTOS_TOKEN=TU_CLAVE_LARGA_Y_UNICA
+```
+
+**2. Crear esa misma API key en la base de datos de Control de Gastos** (es una base **distinta** a `alerta_wts` — no se toca nada aquí):
+```sql
+INSERT INTO sis_api_tokens (
+    sis_usuarios_id,
+    sis_api_tokens_token,
+    sis_api_tokens_fecha_expira,
+    sis_api_tokens_estado
+) VALUES (
+    1,
+    'TU_CLAVE_LARGA_Y_UNICA',   -- debe ser idéntica al API_GASTOS_TOKEN del .env
+    DATE_ADD(NOW(), INTERVAL 1 YEAR),
+    1
+);
+```
+
+**3. Configurar el comando `consulta_gastos` con tu `empresa_id` real:**
+```sql
+UPDATE wts_comando
+SET
+  wts_comando_config = '{
+    "llamadas": [
+      { "si_campo": "Producto", "resultado": "productos",
+        "url": "http://host.docker.internal:88/control_gastos/api/reportes/historial_producto.php",
+        "metodo": "GET", "query": { "empresa_id": "TU_EMPRESA_ID", "q": "{{Producto}}", "desde": "{{periodo_desde}}", "hasta": "{{periodo_hasta}}" } },
+      { "si_campo": "Gastos", "resultado": "total",
+        "url": "http://host.docker.internal:88/control_gastos/api/reportes/gastos_rango.php",
+        "metodo": "GET", "query": { "empresa_id": "TU_EMPRESA_ID", "desde": "{{primer_dia_mes}}", "hasta": "{{Gastos|hoy}}" } }
+    ]
+  }',
+  wts_comando_respuesta = '📊 *Consulta de gastos*
+
+{{mensaje}}'
+WHERE wts_comando_nombre = 'consulta_gastos';
+```
+
+> ⚠️ Se usa `host.docker.internal` (no `localhost`) porque la URL la resuelve el bot **desde dentro del contenedor** Docker — `localhost` ahí apuntaría al propio contenedor, no al servidor de Control de Gastos que corre en el host.
+
+**4. Reconstruir la imagen** (agregamos la variable de entorno y tocamos `src/comandos.js`):
+```powershell
+docker compose up -d --build
+```
+
+### d) Ejemplos de uso
+
+```
+Producto: Papel Higienico                    ← historial completo, sin filtro de fecha
+
+Producto: Papel Higienico
+Periodo: mes                                  ← hoy / mes / año, o se omite = sin fechas
+
+Gastos: hoy                                   ← total del 1 del mes actual a hoy
+Gastos: 10-07-2026                            ← total del 1 del mes actual a esa fecha
+```
+
+### e) Nota — dos formas de cambiar el comportamiento
+
+| Qué quieres cambiar | Dónde | ¿Requiere rebuild? |
+|---|---|---|
+| Palabra/campos clave, URL, parámetros de la API, texto de confirmación general | `UPDATE wts_comando` (base de datos) | No |
+| Cómo se interpreta/formatea la forma de una respuesta nueva, o un tipo de acción nuevo | `src/comandos.js` (código) | Sí — `docker compose up -d --build` |
+
+---
+
 ## Comandos de uso frecuente
 
 ```powershell

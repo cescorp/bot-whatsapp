@@ -11,7 +11,8 @@ const pino   = require('pino')
 const path   = require('path')
 const fs     = require('fs')
 const logger = require('./logger')
-const { obtenerConfig, guardarMensajeRecibido } = require('./db')
+const { obtenerConfig, guardarMensajeRecibido, confirmarWatchdog, obtenerConsolaActiva } = require('./db')
+const { procesarComando } = require('./comandos')
 
 const AUTH_BASE   = path.join(__dirname, 'auth')
 const GRUPOS_FILE = path.join('/app', 'grupos.txt')
@@ -74,6 +75,25 @@ async function iniciarCuenta(cuentaId, nombre) {
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
     logger.info({ type, count: messages.length, cuentaId }, 'messages.upsert recibido')
+
+    // El eco de un mensaje que el propio bot envía al chat "Yo" (ping del watchdog,
+    // respuestas de comandos, recordatorios) llega con type 'append', no 'notify' —
+    // por eso la confirmación del watchdog se revisa ANTES del filtro de tipo de abajo.
+    const me        = sock.authState.creds.me
+    const propioJid = me?.id  ? jidNormalizedUser(me.id)  : null
+    const propioLid = me?.lid ? jidNormalizedUser(me.lid) : null
+
+    for (const message of messages) {
+      const jid = message.key.remoteJid
+      const esSelfChat = jid === propioJid || (propioLid && jid === propioLid)
+      if (!esSelfChat) continue
+
+      const textoRapido = message.message?.conversation || message.message?.extendedTextMessage?.text
+      if (textoRapido?.startsWith('PING_WATCHDOG_')) {
+        await confirmarWatchdog(cuentaId).catch(err => logger.error({ err, cuentaId }, 'Error confirmando watchdog'))
+      }
+    }
+
     if (type !== 'notify') return
 
     const leer = await obtenerConfig('LEER_MENSAJES', 'NO')
@@ -97,14 +117,27 @@ async function iniciarCuenta(cuentaId, nombre) {
         if (jid === 'status@broadcast') continue
         if (!message.message)   continue
 
-        const nombre = message.pushName || null
-        const texto  =
+        const texto =
           message.message.conversation ||
           message.message.extendedTextMessage?.text ||
           message.message.imageMessage?.caption ||
           message.message.videoMessage?.caption ||
           null
 
+        // Nota: la confirmación del PING_WATCHDOG_ ya se maneja arriba, antes del
+        // filtro de 'type', porque ese eco llega como 'append' y nunca llegaría aquí.
+
+        // Consola de comandos — solo en el chat "Yo" y si está activa para esta cuenta
+        if (esSelfChat && texto && await obtenerConsolaActiva(cuentaId)) {
+          const respuesta = await procesarComando(cuentaId, texto)
+          if (respuesta) {
+            await sock.sendMessage(jid, { text: respuesta })
+            logger.info({ cuentaId }, 'Comando ejecutado desde consola Yo')
+            continue
+          }
+        }
+
+        const nombre = message.pushName || null
         const esGrupo    = jid.endsWith('@g.us')
         const fechaMensaje = message.messageTimestamp
           ? new Date(Number(message.messageTimestamp) * 1000)
