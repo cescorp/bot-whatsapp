@@ -290,8 +290,35 @@ async function crearRecordatorioDesdeComando({ cuentaId, titulo, mensajeTexto, f
   }
 }
 
+// Traza de mensajes que salen del número (los escribas tú desde el celular, o el bot).
+// Es independiente de wts_mensaje_recibido — no incluye el chat "Yo" (ese ya se guarda
+// como recibido con wts_mensaje_recibido_yo = 1).
+async function guardarMensajeEnviado(cuentaId, { jid, nombre, texto, esGrupo, origen, fechaMensaje }) {
+  await pool.query(`
+    INSERT INTO wts_mensaje_enviado (
+      wts_cuenta_id,
+      wts_mensaje_enviado_jid,
+      wts_mensaje_enviado_nombre,
+      wts_mensaje_enviado_texto,
+      wts_mensaje_enviado_es_grupo,
+      wts_mensaje_enviado_origen,
+      wts_mensaje_enviado_fecha,
+      user_crea,
+      fecha_crea
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'BOT_WHATSAPP', NOW())
+  `, [
+    cuentaId,
+    jid,
+    nombre  || null,
+    texto   || null,
+    esGrupo ? 1 : 0,
+    origen  || 1,
+    fechaMensaje || new Date(),
+  ])
+}
+
 module.exports = {
   pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido,
   obtenerEstadoWatchdog, actualizarPingWatchdog, confirmarWatchdog, marcarAlertaWatchdogEnviada,
-  obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando,
+  obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando, guardarMensajeEnviado,
 }

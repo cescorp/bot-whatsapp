@@ -1,24 +1,24 @@
-// Manejo de sesión JWT en sessionStorage
+// Manejo de sesión JWT en localStorage
 const Auth = {
   TOKEN_KEY: 'wts_token',
   USER_KEY:  'wts_user',
 
   guardar(token, usuario) {
-    sessionStorage.setItem(this.TOKEN_KEY, token)
-    sessionStorage.setItem(this.USER_KEY, JSON.stringify(usuario))
+    localStorage.setItem(this.TOKEN_KEY, token)
+    localStorage.setItem(this.USER_KEY, JSON.stringify(usuario))
   },
 
   token() {
-    return sessionStorage.getItem(this.TOKEN_KEY)
+    return localStorage.getItem(this.TOKEN_KEY)
   },
 
   usuario() {
-    try { return JSON.parse(sessionStorage.getItem(this.USER_KEY)) } catch { return null }
+    try { return JSON.parse(localStorage.getItem(this.USER_KEY)) } catch { return null }
   },
 
   cerrar() {
-    sessionStorage.removeItem(this.TOKEN_KEY)
-    sessionStorage.removeItem(this.USER_KEY)
+    localStorage.removeItem(this.TOKEN_KEY)
+    localStorage.removeItem(this.USER_KEY)
     window.location.href = CONFIG.BASE_URL + '/login.html'
   },
 

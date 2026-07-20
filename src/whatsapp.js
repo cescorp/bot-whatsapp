@@ -11,7 +11,7 @@ const pino   = require('pino')
 const path   = require('path')
 const fs     = require('fs')
 const logger = require('./logger')
-const { obtenerConfig, guardarMensajeRecibido, confirmarWatchdog, obtenerConsolaActiva } = require('./db')
+const { obtenerConfig, guardarMensajeRecibido, confirmarWatchdog, obtenerConsolaActiva, guardarMensajeEnviado } = require('./db')
 const { procesarComando } = require('./comandos')
 
 const AUTH_BASE   = path.join(__dirname, 'auth')
@@ -43,7 +43,9 @@ async function iniciarCuenta(cuentaId, nombre) {
     getMessage: async () => ({ conversation: '' }),
   })
 
-  cuentas.set(cuentaId, { sock, conectado: false, nombre })
+  // idsBot: ids de mensajes enviados por enviarMensaje() (bot), para distinguirlos
+  // de los que tú escribes directo desde el celular cuando llega su eco
+  cuentas.set(cuentaId, { sock, conectado: false, nombre, idsBot: new Set() })
 
   sock.ev.on('creds.update', saveCreds)
 
@@ -86,11 +88,38 @@ async function iniciarCuenta(cuentaId, nombre) {
     for (const message of messages) {
       const jid = message.key.remoteJid
       const esSelfChat = jid === propioJid || (propioLid && jid === propioLid)
-      if (!esSelfChat) continue
 
-      const textoRapido = message.message?.conversation || message.message?.extendedTextMessage?.text
-      if (textoRapido?.startsWith('PING_WATCHDOG_')) {
-        await confirmarWatchdog(cuentaId).catch(err => logger.error({ err, cuentaId }, 'Error confirmando watchdog'))
+      if (esSelfChat) {
+        const textoRapido = message.message?.conversation || message.message?.extendedTextMessage?.text
+        if (textoRapido?.startsWith('PING_WATCHDOG_')) {
+          await confirmarWatchdog(cuentaId).catch(err => logger.error({ err, cuentaId }, 'Error confirmando watchdog'))
+        }
+        continue
+      }
+
+      // Traza completa de WhatsApp — mensajes que salen del número hacia otros
+      // chats/grupos (los escribas tú desde el celular, o el bot). El chat "Yo"
+      // ya se guarda aparte como recibido (wts_mensaje_recibido_yo = 1).
+      if (message.key.fromMe && message.message && jid !== 'status@broadcast') {
+        const idsBot   = cuentas.get(cuentaId)?.idsBot
+        const esDelBot = idsBot?.has(message.key.id) ?? false
+        if (esDelBot) idsBot.delete(message.key.id)   // limpieza, ya cumplió su propósito
+
+        const texto =
+          message.message.conversation ||
+          message.message.extendedTextMessage?.text ||
+          message.message.imageMessage?.caption ||
+          message.message.videoMessage?.caption ||
+          null
+
+        await guardarMensajeEnviado(cuentaId, {
+          jid,
+          nombre: message.pushName || null,
+          texto,
+          esGrupo: jid.endsWith('@g.us'),
+          origen: esDelBot ? 2 : 1,   // 1=Celular (tú), 2=Bot (scheduler/API/panel)
+          fechaMensaje: message.messageTimestamp ? new Date(Number(message.messageTimestamp) * 1000) : new Date(),
+        }).catch(err => logger.error({ err, cuentaId }, 'Error guardando mensaje enviado'))
       }
     }
 
@@ -182,7 +211,8 @@ async function enviarMensaje(cuentaId, destino, texto) {
     if (!result?.exists) throw new Error(`El número ${jid} no está registrado en WhatsApp`)
   }
 
-  await cuenta.sock.sendMessage(jid, { text: texto })
+  const enviado = await cuenta.sock.sendMessage(jid, { text: texto })
+  if (enviado?.key?.id) cuenta.idsBot.add(enviado.key.id)
 }
 
 async function listarGrupos(cuentaId = 1) {

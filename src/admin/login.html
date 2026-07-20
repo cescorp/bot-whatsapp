@@ -53,7 +53,7 @@
 <script src="plugins/bootstrap/js/bootstrap.min.js"></script>
 <script src="assets/js/config.js"></script>
 <script>
-  if (sessionStorage.getItem('wts_token')) {
+  if (localStorage.getItem('wts_token')) {
     window.location.href = 'index.html'
   }
 
@@ -76,8 +76,8 @@
       })
       const data = await resp.json()
       if (!data.ok) throw new Error(data.error)
-      sessionStorage.setItem('wts_token', data.token)
-      sessionStorage.setItem('wts_user',  JSON.stringify(data.usuario))
+      localStorage.setItem('wts_token', data.token)
+      localStorage.setItem('wts_user',  JSON.stringify(data.usuario))
       window.location.href = 'index.html'
     } catch (ex) {
       err.textContent    = ex.message

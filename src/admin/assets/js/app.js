@@ -108,7 +108,7 @@ async function logFrontendError(contexto, err) {
   try {
     await fetch(CONFIG.BASE_URL + '/api/log-error', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionStorage.getItem('wts_token') },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('wts_token') },
       body: JSON.stringify({ contexto, mensaje: err?.stack || String(err) })
     })
   } catch (_) {}
