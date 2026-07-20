@@ -246,8 +246,7 @@ ejecutarCalendario(cuentaId, comando, campos)
      INSERT INTO wts_calendario_alerta (wts_calendario_id, wts_calendario_alerta_tipo, wts_calendario_alerta_valor, prioridad)
        VALUES (id, tipo, valor, 5)
 
-  // el trigger existente (trg_wts_calendario_ai, FLUJO.md Flujo 2) ya genera el wts_mensaje —
-  // no se toca nada de esa parte
+  await generarMensajes(calendario_id, client)   // src/db.js — ver FLUJO.md Flujo 2
 
   return { Titulo: titulo, Fecha: campos.Fecha, Recordatorio: campos.Recordatorio || '' }
 ```

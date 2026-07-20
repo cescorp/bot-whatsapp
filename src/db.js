@@ -243,11 +243,114 @@ async function buscarComando(cuentaId, campos) {
   return rows.find(c => c.campos_clave.some(clave => clavesMensaje.includes(clave))) || null
 }
 
+// Genera los wts_mensaje de un evento de calendario — reemplaza al trigger viejo de BD
+// (trg_wts_calendario_alerta_ai/au/ad), que no soporta repetición y quedó en conflicto
+// con esta función (el trigger, al disparar DEFERRED en el COMMIT, cancelaba y
+// reemplazaba lo que esta función generaba). Único punto de generación de mensajes de
+// calendario en todo el sistema — lo usan el panel admin, la API externa y los comandos.
+// Requiere `client` con una transacción abierta (BEGIN ya ejecutado por el llamador).
+async function generarMensajes(calendarioId, client) {
+  const { rows: [cal] } = await client.query(`
+    SELECT c.*, ct.wts_contacto_celular_principal AS celular_contacto,
+           g.wts_grupo_jid
+    FROM   wts_calendario c
+    LEFT JOIN wts_contacto ct ON ct.wts_contacto_id = c.wts_contacto_id
+    LEFT JOIN wts_grupo    g  ON g.wts_grupo_id     = c.wts_grupo_id
+    WHERE  c.wts_calendario_id = $1
+  `, [calendarioId])
+
+  if (!cal || cal.wts_calendario_estado !== 1) return
+
+  // Resolver destino
+  let destino = null, contacto_id = null
+  if (cal.wts_contacto_id && cal.celular_contacto) {
+    destino     = cal.celular_contacto
+    contacto_id = cal.wts_contacto_id
+  } else if (cal.wts_grupo_id && cal.wts_grupo_jid) {
+    destino = cal.wts_grupo_jid
+  } else if (cal.wts_calendario_destino_libre) {
+    destino = cal.wts_calendario_destino_libre
+  }
+  if (!destino) return
+
+  const { rows: alertas } = await client.query(`
+    SELECT * FROM wts_calendario_alerta
+    WHERE  wts_calendario_id = $1 AND wts_calendario_alerta_estado = 1
+    ORDER BY wts_calendario_alerta_id
+  `, [calendarioId])
+
+  if (!alertas.length) return
+
+  // Cancelar mensajes pendientes anteriores
+  await client.query(`
+    UPDATE wts_mensaje SET wts_mensaje_estado = 5, user_modifica = 'SISTEMA', fecha_modifica = NOW()
+    WHERE  wts_calendario_id = $1 AND wts_mensaje_estado NOT IN (3, 5)
+  `, [calendarioId])
+
+  const texto      = cal.wts_calendario_mensaje_texto || `Recordatorio: ${cal.wts_calendario_titulo}`
+  const repeticion = parseInt(cal.wts_calendario_repeticion) || 0
+  const repFinStr  = cal.wts_calendario_repeticion_fin
+  const repFin     = repFinStr ? new Date(repFinStr) : null
+
+  // Construir lista de fechas de evento según repetición
+  const fechas = []
+  let fechaActual = new Date(cal.wts_calendario_fecha_evento)
+
+  fechas.push(new Date(fechaActual))
+
+  if (repeticion > 0 && repFin) {
+    while (true) {
+      let siguiente = new Date(fechaActual)
+      if      (repeticion === 1) siguiente.setDate(siguiente.getDate() + 1)       // diario
+      else if (repeticion === 2) siguiente.setDate(siguiente.getDate() + 7)       // semanal
+      else if (repeticion === 3) siguiente.setMonth(siguiente.getMonth() + 1)     // mensual
+
+      if (siguiente > repFin) break
+      fechas.push(new Date(siguiente))
+      fechaActual = siguiente
+    }
+  }
+
+  // Generar mensajes para cada fecha × cada alerta
+  for (const fechaEvento of fechas) {
+    for (const a of alertas) {
+      let fechaProg = new Date(fechaEvento)
+      const tipo  = a.wts_calendario_alerta_tipo
+      const valor = a.wts_calendario_alerta_valor
+
+      if      (tipo === 1) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 86400000)
+      else if (tipo === 2) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 3600000)
+      else if (tipo === 3) fechaProg = new Date(fechaEvento.getTime() - parseInt(valor) * 60000)
+      else if (tipo === 4) {
+        const [h, m] = valor.split(':')
+        fechaProg = new Date(fechaEvento)
+        fechaProg.setHours(parseInt(h), parseInt(m || 0), 0, 0)
+      } else if (tipo === 0) {
+        fechaProg = new Date(fechaEvento)
+      } else {
+        continue
+      }
+
+      await client.query(`
+        INSERT INTO wts_mensaje
+          (wts_contacto_id, wts_calendario_id, wts_calendario_alerta_id,
+           wts_mensaje_tipo, wts_mensaje_origen,
+           wts_mensaje_destino, wts_mensaje_texto,
+           wts_mensaje_fecha_programada, wts_mensaje_estado,
+           wts_mensaje_prioridad, wts_mensaje_intentos,
+           wts_cuenta_id, user_crea)
+        VALUES ($1,$2,$3, 2,2, $4,$5, $6, 1, $7, 0, $8, 'SISTEMA')
+      `, [contacto_id, calendarioId, a.wts_calendario_alerta_id,
+          destino, texto, fechaProg,
+          a.wts_calendario_alerta_prioridad || 2,
+          cal.wts_cuenta_id || 1])
+    }
+  }
+}
+
 // Crea un evento de calendario (y su alerta, si aplica) en una sola transacción.
 // El destino es el propio número de la cuenta (destino_libre) — el recordatorio
-// vuelve al mismo chat "Yo" que lo creó.
-// El trigger de BD (trg_wts_calendario_ai / trg_wts_calendario_alerta_ai) genera
-// el wts_mensaje correspondiente — no hay que tocar esa parte.
+// vuelve al mismo chat "Yo" que lo creó. Genera el wts_mensaje con generarMensajes().
 async function crearRecordatorioDesdeComando({ cuentaId, titulo, mensajeTexto, fechaEvento, alerta }) {
   const client = await pool.connect()
   try {
@@ -279,6 +382,8 @@ async function crearRecordatorioDesdeComando({ cuentaId, titulo, mensajeTexto, f
         ) VALUES ($1, $2, $3, 5, 1, 'BOT_WHATSAPP', NOW())
       `, [calendarioId, alerta.tipo, String(alerta.valor)])
     }
+
+    await generarMensajes(calendarioId, client)
 
     await client.query('COMMIT')
     return calendarioId
@@ -320,5 +425,5 @@ async function guardarMensajeEnviado(cuentaId, { jid, nombre, texto, esGrupo, or
 module.exports = {
   pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido,
   obtenerEstadoWatchdog, actualizarPingWatchdog, confirmarWatchdog, marcarAlertaWatchdogEnviada,
-  obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando, guardarMensajeEnviado,
+  obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando, guardarMensajeEnviado, generarMensajes,
 }

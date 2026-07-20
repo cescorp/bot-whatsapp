@@ -10,7 +10,7 @@ Bot de WhatsApp (Node.js + Baileys + PostgreSQL) con:
 - **Scheduler** que envía mensajes pendientes desde una cola en BD
 - **API REST** protegida con API key para integraciones externas
 - **Panel admin** (AdminLTE) protegido con JWT para gestión manual
-- **Triggers en PostgreSQL** que generan mensajes automáticamente desde el calendario
+- **`generarMensajes()`** (en `src/db.js`) genera automáticamente los mensajes de calendario — reemplazó a los triggers de PostgreSQL que existían antes (eliminados, ver sección "Generación de mensajes de calendario")
 
 Corre en **Docker** sobre Windows. PostgreSQL corre en el **Windows host** (no en Docker).
 
@@ -62,12 +62,13 @@ src/
 - **Comparar fechas:** comparar como strings (`actual.fecha_local !== fecha_evento.slice(0,16)`), no con `new Date()` ni `.getTime()`. El desfase UTC-5 genera falsos positivos.
 - **Mensajes enviados y cancelados:** los estados `3 (Enviado)` y `5 (Cancelado)` son **intocables**. Ninguna operación de actualización masiva debe incluirlos. Siempre filtrar con `AND wts_mensaje_estado NOT IN (3, 5)`.
 
-### Trigger de calendario (PostgreSQL)
+### Generación de mensajes de calendario (`generarMensajes()` en `src/db.js`)
 
-- Los triggers `trg_wts_calendario_alerta_ai/au/ad` se disparan en `wts_calendario_alerta` y llaman a `wts_generar_mensajes_calendario()`.
-- Esa función **cancela todos los pendientes del evento y crea nuevos** — es el comportamiento correcto cuando cambian las alertas.
-- **NO tocar la tabla `wts_calendario_alerta`** si no es necesario. Si no hay cambios en alertas, no hacer DELETE + INSERT aunque "se vean iguales" — el trigger se dispararía innecesariamente y regeneraría todos los mensajes.
-- El guard de deduplicación (`set_config('app.cal_gen_X', '1', true)`) evita que el trigger corra más de una vez por transacción, pero solo dentro de la misma transacción.
+- **Ya no hay triggers de PostgreSQL para esto.** Existían (`trg_wts_calendario_alerta_ai/au/ad`, llamaban a `wts_generar_mensajes_calendario()`), pero no soportaban repetición (diario/semanal/mensual) y quedaban en conflicto con la generación en JS — el trigger, por ser `DEFERRABLE INITIALLY DEFERRED`, se disparaba al COMMIT y cancelaba/reemplazaba lo que `generarMensajes()` ya había generado correctamente. Se eliminaron.
+- `generarMensajes(calendarioId, client)` es ahora el **único** punto de generación en todo el sistema — lo llaman el panel admin (`src/admin/servidor/rutas/calendario.js`), la API externa (`src/api/routes/calendario.js`) y la consola de comandos del chat "Yo" (`crearRecordatorioDesdeComando` en `db.js`). Requiere un `client` con transacción abierta (`BEGIN` ya ejecutado por el llamador).
+- Esa función **cancela todos los pendientes del evento y crea nuevos** — es el comportamiento correcto cuando cambian las alertas o la repetición.
+- Soporta repetición: arma una lista de fechas sumando día/semana/mes desde `wts_calendario_fecha_evento` hasta `wts_calendario_repeticion_fin`, y genera un mensaje por cada fecha × cada alerta activa.
+- Si agregas un nuevo lugar en el código que cree/modifique `wts_calendario` o `wts_calendario_alerta`, **debe llamar a `generarMensajes()` explícitamente** — no hay nada automático en la base de datos que lo haga por ti.
 
 ### Lógica del PUT de calendario
 
@@ -75,12 +76,12 @@ El `PUT /admin/api/calendario/:id` implementa lógica diferencial:
 
 | Qué cambió | Acción |
 |---|---|
-| Nada | Solo UPDATE en `wts_calendario`. No tocar alertas. |
+| Nada | Solo UPDATE en `wts_calendario`. No tocar alertas ni regenerar mensajes. |
 | Solo título/texto/plantilla | Igual que arriba. |
-| Solo fecha del evento | UPDATE en calendario + `UPDATE noop` en alertas (para disparar trigger que recalcula fechas de mensajes pendientes). |
-| Alertas cambiaron | DELETE + INSERT alertas (trigger maneja cancelación y recreación de mensajes). |
+| Solo fecha del evento o repetición | UPDATE en calendario + `generarMensajes()` explícito. |
+| Alertas cambiaron | DELETE + INSERT alertas + `generarMensajes()` explícito. |
 
-La comparación de alertas usa normalización: `{tipo, valor, prioridad}` ordenado, comparado como JSON string. Si la comparación falla falsamente (ej: tipos de dato distintos entre DB e incoming), puede disparar regeneración innecesaria — revisar que `parseInt()` y `String()` se aplican en ambos lados.
+La comparación de alertas usa normalización: `{tipo, valor, prioridad}` ordenado, comparado como JSON string. Si la comparación falla falsamente (ej: tipos de dato distintos entre DB e incoming), puede disparar regeneración innecesaria — revisar que `parseInt()` y `String()` se aplican en ambos lados. Como `repeticion_fin` es obligatorio cuando `repeticion != 0` (validado en frontend y backend), si agregas un formulario nuevo que cree eventos recurrentes, replica esa validación.
 
 ### Frontend — fechas en el panel de calendario
 
@@ -133,7 +134,7 @@ JWT_EXPIRES=8h
 
 | Tabla | Rol |
 |---|---|
-| `wts_mensaje` | Cola central. La escriben API, panel y triggers; la lee el scheduler. |
+| `wts_mensaje` | Cola central. La escriben API, panel y `generarMensajes()` (calendario); la lee el scheduler. |
 | `wts_mensaje_log` | Auditoría de cambios de estado. |
 | `wts_contacto` | Destinatarios. `permite_whatsapp=1` y `estado=1` son requisito para envío. |
 | `wts_plantilla` | Plantillas con variables `{{nombre}} {{celular}} {{mensaje}} {{titulo}} {{fecha_evento}}`. |
@@ -160,6 +161,6 @@ log_errores/      ← logs de errores del servidor
 ## Mejoras pendientes / conocidas
 
 - **Reintentos automáticos:** mensajes en estado `4 (Error)` con `intentos < 3` deberían reintentarse automáticamente tras unos minutos. Hoy requieren intervención manual.
-- **Alerta de desconexión WhatsApp:** si la sesión se cierra, el bot salta ciclos en silencio. Pendiente implementar notificación (correo o Telegram) cuando `estaConectado()` retorna `false` por múltiples ciclos.
 - **Mensajes fuera de ventana:** si el bot estuvo caído y un mensaje superó `fecha_programada + VENTANA_MINUTOS`, queda como `Pendiente` eternamente sin indicación visible de que expiró.
-- **Imágenes en mensajes:** Baileys soporta `{ image, caption }`. Pendiente agregar campo de media en `wts_mensaje` y uploader en el panel.
+- **Imágenes en mensajes salientes:** Baileys soporta `{ image, caption }`. Pendiente agregar campo de media en `wts_mensaje` y uploader en el panel (distinto de la descarga de adjuntos entrantes/salientes para trazabilidad, todavía sin construir).
+- ~~Alerta de desconexión WhatsApp~~ — implementado (`enviarAlertaDesconexion` en `src/mailer.js`, llamado desde `procesarPendientes()`). Además ahora hay un watchdog que verifica que la *lectura* de mensajes siga funcionando (no solo la conexión) — ver `Activar_Consola_Comando.md`.

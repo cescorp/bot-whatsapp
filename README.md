@@ -157,7 +157,7 @@ En el celular: **WhatsApp → ⋮ → Dispositivos vinculados → Vincular dispo
 | `2` | En proceso | Reservado (no usado actualmente) |
 | `3` | Enviado | El bot lo envió correctamente |
 | `4` | Error | Falló el envío, ver `wts_mensaje_ultimo_error` |
-| `5` | Cancelado | Cancelado por trigger (el evento fue modificado o eliminado) |
+| `5` | Cancelado | Cancelado al regenerarse (el evento de calendario fue modificado o eliminado) |
 
 ---
 
@@ -188,16 +188,17 @@ WHERE wts_configuracion_clave = 'VENTANA_MINUTOS';
 
 ---
 
-### Cómo funciona el trigger de calendario
+### Cómo funciona la generación de mensajes de calendario
 
-Cuando se inserta o modifica un evento en `wts_calendario`, el trigger llama a `wts_generar_mensajes_calendario` que:
+Cuando se crea o modifica un evento en `wts_calendario` (panel admin, API externa, o el comando "recordatorio" del chat "Yo"), se llama explícitamente a `generarMensajes(calendarioId, client)` en `src/db.js`, que:
 
 1. Cancela todos los mensajes pendientes del evento (estado → 5)
-2. Recorre las alertas activas del evento
-3. Calcula la `fecha_programada` según el tipo de alerta
-4. Inserta un nuevo registro en `wts_mensaje` por cada alerta
+2. Arma la lista de fechas del evento según `wts_calendario_repeticion` (0=ninguna, 1=diario, 2=semanal, 3=mensual) hasta `wts_calendario_repeticion_fin`
+3. Recorre las alertas activas del evento
+4. Calcula la `fecha_programada` según el tipo de alerta
+5. Inserta un nuevo registro en `wts_mensaje` por cada fecha × cada alerta
 
-**No requiere intervención del bot** — los mensajes ya aparecen listos en la cola.
+**No requiere intervención del bot** — los mensajes ya aparecen listos en la cola. (Antes esto lo hacía un trigger de PostgreSQL; se eliminó porque no soportaba repetición y quedaba en conflicto con esta lógica — ver `FLUJO.md` Flujo 2.)
 
 ---
 
@@ -628,7 +629,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/mensajes/20" `
 ---
 
 ### POST `/calendario`
-Crea un evento con alertas. Los mensajes se generan automáticamente por trigger.
+Crea un evento con alertas. Los mensajes se generan automáticamente (`generarMensajes()` en `src/db.js`).
 
 **Request:**
 ```powershell

@@ -927,6 +927,12 @@ async function guardarEvento() {
 
   if (!alertas.length) { Alerta.error('Agrega al menos una regla de notificación'); return }
 
+  const repeticion    = parseInt(document.getElementById('a-repeticion').value)
+  const repeticionFin = document.getElementById('a-rep-fin').value
+  if (repeticion !== 0 && !repeticionFin) {
+    Alerta.error('Selecciona hasta cuándo se repite el evento'); return
+  }
+
   const body = {
     titulo,
     descripcion:    null,
@@ -934,8 +940,8 @@ async function guardarEvento() {
     contacto_id, grupo_id, destino_libre,
     plantilla_id:   document.getElementById('a-plantilla').value || null,
     mensaje_texto:  document.getElementById('a-mensaje').value.trim() || null,
-    repeticion:     parseInt(document.getElementById('a-repeticion').value),
-    repeticion_fin: document.getElementById('a-rep-fin').value || null,
+    repeticion,
+    repeticion_fin: repeticionFin || null,
     estado:         parseInt(document.getElementById('a-estado').value),
     cuenta_id:      parseInt(document.getElementById('a-cuenta').value) || 1,
     alertas

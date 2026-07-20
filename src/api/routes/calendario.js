@@ -1,10 +1,11 @@
 const { Router } = require('express')
-const { pool }   = require('../../db')
+const { pool, generarMensajes } = require('../../db')
 
 const router = Router()
 
 // POST /calendario — crea un evento con sus alertas
-// El trigger de la BD genera los mensajes automáticamente.
+// Los mensajes se generan con generarMensajes() (src/db.js) — mismo motor que usa
+// el panel admin, con soporte de repetición si el body la incluye a futuro.
 // Body: {
 //   contacto_id, titulo, descripcion?,
 //   fecha_evento,       — ISO string: "2026-07-01T09:00:00"
@@ -40,7 +41,7 @@ router.post('/', async (req, res) => {
 
     const calendario_id = rows[0].id
 
-    // 2. Insertar alertas — el trigger wts_calendario_alerta_ai genera los mensajes
+    // 2. Insertar alertas
     for (const alerta of alertas) {
       if (!alerta.tipo || !alerta.valor) continue
       await client.query(`
@@ -58,6 +59,9 @@ router.post('/', async (req, res) => {
         alerta.prioridad || 5,
       ])
     }
+
+    // 3. Generar los wts_mensaje correspondientes
+    await generarMensajes(calendario_id, client)
 
     await client.query('COMMIT')
     res.status(201).json({ ok: true, calendario_id })

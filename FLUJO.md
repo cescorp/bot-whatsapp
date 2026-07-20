@@ -83,18 +83,19 @@ Este es el flujo central y se repite indefinidamente mientras el proceso viva.
 - Si WhatsApp está desconectado, el ciclo simplemente se salta (no se pierden mensajes, siguen `Pendiente`).
 - Baileys reconecta solo (`connection.update` → `close` → `setTimeout(iniciarBot, 5000)`), salvo que el código de desconexión sea `loggedOut`, en cuyo caso hay que reescanear el QR (se regenera `src/auth/qr.png`).
 
-## Flujo 2 — Generación automática de mensajes desde el Calendario (trigger de BD)
+## Flujo 2 — Generación automática de mensajes desde el Calendario (`generarMensajes()` en `src/db.js`)
 
-Este flujo ocurre **dentro de PostgreSQL**, no en el código Node. Es la fuente de mensajes tipo "recordatorio".
+> Este flujo **antes** vivía dentro de PostgreSQL como triggers (`trg_wts_calendario_alerta_ai/au/ad` → `wts_generar_mensajes_calendario()`). Se eliminaron: no soportaban repetición (diario/semanal/mensual), y al ser `DEFERRABLE INITIALLY DEFERRED` se disparaban en el COMMIT y **cancelaban/reemplazaban** lo que la generación en JS ya había creado correctamente. Ahora todo pasa por una sola función de Node, `generarMensajes(calendarioId, client)`.
 
 ```
-INSERT/UPDATE en wts_calendario
+Se crea/edita un evento (panel admin, API externa, o comando "recordatorio" del chat "Yo")
         │
         ▼
-trigger trg_wts_calendario_ai / au
+INSERT/UPDATE en wts_calendario + wts_calendario_alerta
+  (dentro de la misma transacción del caller)
         │
         ▼
-wts_generar_mensajes_calendario(calendario_id)
+await generarMensajes(calendarioId, client)   ← src/db.js, llamado explícitamente
         │
         ├─ resuelve destino:
         │     · contacto asociado → celular_principal
@@ -103,36 +104,40 @@ wts_generar_mensajes_calendario(calendario_id)
         │     · nada válido       → no genera nada
         │
         ├─ arma texto: wts_calendario_mensaje_texto
-        │     o fallback "Recordatorio: {titulo}\nFecha: {fecha}"
+        │     o fallback "Recordatorio: {titulo}"
         │
         ├─ cancela mensajes pendientes previos de este calendario
         │     (estado → 5, excepto ya Enviados/Cancelados)
         │
-        └─ por cada wts_calendario_alerta activa del evento:
+        ├─ arma la lista de fechas del evento según repetición:
+        │     wts_calendario_repeticion: 0=ninguna, 1=diario, 2=semanal, 3=mensual
+        │     suma día/semana/mes desde wts_calendario_fecha_evento hasta
+        │     wts_calendario_repeticion_fin (obligatorio si repeticion != 0)
+        │
+        └─ por cada fecha × cada wts_calendario_alerta activa del evento:
               calcula fecha de disparo según tipo de alerta
                 (0=en el momento, 1=días antes, 2=horas antes,
                  3=minutos antes, 4=hora fija del día)
               INSERT INTO wts_mensaje (estado=1, tipo=2 Calendario,
                                        origen=2, prioridad de la alerta)
 
-INSERT/UPDATE/DELETE en wts_calendario_alerta
+DELETE de un evento (panel admin)
         │
-        ▼
-trigger trg_wts_calendario_alerta_cambio (CONSTRAINT TRIGGER, deferred)
-        │
-        └─ vuelve a llamar wts_generar_mensajes_calendario()
-              (con guard por transacción vía set_config, evita
-               ejecutarse más de una vez por transacción)
-
-DELETE en wts_calendario
-        │
-        ▼
-trigger trg_wts_calendario_ad
-        │
-        └─ cancela (estado=5) los mensajes pendientes del evento borrado
+        └─ UPDATE wts_mensaje SET estado=5 WHERE calendario_id=X AND estado NOT IN (3,5)
+              (cancelación explícita en el propio endpoint, sin trigger)
 ```
 
-Estos mensajes generados por trigger caen directamente en `wts_mensaje` con `estado=1`, así que el **Flujo 1** (scheduler) los recoge y envía normalmente en su siguiente ciclo dentro de la ventana configurada.
+**Dónde se llama `generarMensajes()` hoy:**
+
+| Origen | Archivo |
+|---|---|
+| Panel admin — crear/editar evento | `src/admin/servidor/rutas/calendario.js` |
+| API externa — `POST /calendario` | `src/api/routes/calendario.js` |
+| Comando "recordatorio" del chat "Yo" | `crearRecordatorioDesdeComando()` en `src/db.js` |
+
+Cualquier código nuevo que inserte o modifique `wts_calendario`/`wts_calendario_alerta` **debe llamar a `generarMensajes()` explícitamente** — no hay nada automático en la base de datos que lo haga.
+
+Estos mensajes caen directamente en `wts_mensaje` con `estado=1`, así que el **Flujo 1** (scheduler) los recoge y envía normalmente en su siguiente ciclo dentro de la ventana configurada.
 
 ## Flujo 3 — API REST externa (integraciones, protegida con API key)
 
@@ -214,7 +219,7 @@ También existe `POST /admin/api/grupos/sync` que hace lo mismo en caliente cont
 
 | Tabla | Rol |
 |---|---|
-| `wts_mensaje` | Cola de envío. Es el centro de todo — la escriben la API, el panel admin y los triggers de calendario; la lee y actualiza el scheduler. |
+| `wts_mensaje` | Cola de envío. Es el centro de todo — la escriben la API, el panel admin y `generarMensajes()` (calendario); la lee y actualiza el scheduler. |
 | `wts_mensaje_log` | Auditoría de cambios de estado de cada mensaje. |
 | `wts_contacto` | Personas/empresas destinatarias. `permite_whatsapp` y `estado` filtran si el bot puede enviarles. |
 | `wts_plantilla` | Plantillas reutilizables con variables `{{nombre}} {{celular}} {{mensaje}} {{titulo}} {{fecha_evento}}`. |
@@ -244,8 +249,8 @@ Origen del mensaje                         Cola                    Envío
 API externa (POST /mensajes)      ─┐
 Panel admin (crear mensaje)       ─┤
 Panel admin/API (crear evento     ─┼──►  wts_mensaje (estado=1) ──► scheduler (cada N min)
-  calendario → trigger genera         │                                  │
-  1 mensaje por alerta activa)    ─┘                                  ├─ WhatsApp (Baileys)
+  calendario → generarMensajes()      │                                  │
+  crea N mensajes por fecha×alerta)─┘                                  ├─ WhatsApp (Baileys)
                                                                         ├─ marcarEnviado (estado=3)
                                                                         └─ marcarError   (estado=4)
 ```

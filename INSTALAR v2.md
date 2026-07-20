@@ -818,7 +818,7 @@ Mensaje: No olvides la reunion;
 Fecha: 30-07-2026 09:00;
 Recordatorio: 1 hora antes
 ```
-El bot responde confirmando y crea el evento en `wts_calendario` (mismo mecanismo del Flujo 2, sección "Cómo funciona el trigger de calendario").
+El bot responde confirmando y crea el evento en `wts_calendario` (mismo mecanismo del Flujo 2 — `generarMensajes()` en `src/db.js`, sección "Cómo funciona la generación de mensajes de calendario" del README).
 
 ### c) Configurar la API de Gastos (para el comando `consulta_gastos`)
 
