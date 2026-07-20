@@ -370,7 +370,7 @@
               onclick="eliminarEvento()">
               <i class="fas fa-trash mr-1"></i>Cancelar evento
             </button>
-            <button type="button" class="btn btn-primary"
+            <button type="button" class="btn btn-primary" id="btnGuardarAlerta"
               onclick="guardarEvento()">
               <i class="fas fa-save mr-1"></i>Guardar
             </button>
@@ -899,6 +899,8 @@ function actualizarPlaceholderAlerta(sel) {
 
 // ── Guardar evento ───────────────────────────────────────────────────────────
 async function guardarEvento() {
+  const btnGuardar = document.getElementById('btnGuardarAlerta')
+  if (btnGuardar.disabled) return
   const titulo = document.getElementById('a-titulo').value.trim()
   const fecha  = document.getElementById('a-fecha').value
   const hora   = document.getElementById('a-hora').value || '00:00'
@@ -948,6 +950,7 @@ async function guardarEvento() {
   }
 
   const id = document.getElementById('a-id').value
+  btnGuardar.disabled = true
   try {
     const resp = await Auth.fetch(
       CONFIG.BASE_URL + '/api/calendario' + (id ? `/${id}` : ''),
@@ -960,6 +963,8 @@ async function guardarEvento() {
     cargarMes(vistaYear, vistaMes)
   } catch(e) {
     Alerta.error(e.message)
+  } finally {
+    btnGuardar.disabled = false
   }
 }
 

@@ -291,6 +291,9 @@ async function generarMensajes(calendarioId, client) {
   const repeticion = parseInt(cal.wts_calendario_repeticion) || 0
   const repFinStr  = cal.wts_calendario_repeticion_fin
   const repFin     = repFinStr ? new Date(repFinStr) : null
+  // "Repetir hasta" llega sin hora (medianoche) — se trata como fin del día
+  // para que ese día sí quede incluido en la serie, no excluido de entrada.
+  if (repFin) repFin.setHours(23, 59, 59, 999)
 
   // Construir lista de fechas de evento según repetición
   const fechas = []
