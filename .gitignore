@@ -7,3 +7,7 @@ log_errores/
 
 # Caché de grupos WhatsApp
 /grupos.txt
+
+# Agente de host — token propio y registro de procesos en ejecución, no se versionan
+scripts/agentes-host/.env
+scripts/agentes-host/procesos.json

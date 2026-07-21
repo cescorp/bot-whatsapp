@@ -90,7 +90,7 @@ VALUES
   'CALENDARIO',
   '["Titulo","Fecha"]',
   '{}',
-  '✅ Evento "{{Titulo}}" creado para el {{Fecha}}{{Recordatorio? , aviso {{Recordatorio}} : ""}}'
+  '✅ Evento "{{Titulo}}" creado para el {{Fecha}}{{RecordatorioTexto}}'
 ),
 (
   'consulta_gastos',
@@ -109,6 +109,8 @@ VALUES
 ```
 
 > `{{Gastos|hoy}}` = usar el valor del campo `Gastos`, o la fecha de hoy si el usuario escribió literalmente "hoy". `{{primer_dia_mes}}` es una variable especial que resuelve el bot (1º del mes en curso), no un campo del mensaje.
+>
+> `renderizar()` (`src/comandos.js`) solo hace sustitución simple `{{clave}}` — **no soporta condicionales** dentro de la plantilla. `RecordatorioTexto` no es un campo que escribas en el mensaje: lo arma `ejecutarCalendario()` en JS (`', aviso ' + Recordatorio` si vino `Recordatorio`, o `''` si no) y lo devuelve ya resuelto para que la plantilla lo inserte tal cual.
 
 ---
 
@@ -168,11 +170,13 @@ parsearCampos(texto)
   campos = {}
   por cada línea del texto:
      si la línea contiene ':' →
-        clave = texto antes de ':' (trim)
+        clave = normalizarClave(texto antes de ':' (trim))   // "vpn"/"VPN"/"Vpn" → "Vpn"
         valor = texto después de ':' (trim, sin ';' final)
         campos[clave] = valor
   return campos   // {} si el mensaje no tiene ninguna línea "Clave: valor"
 ```
+
+`normalizarClave()` pasa el nombre del campo a "Primera mayúscula, resto minúscula" antes de guardarlo — así no importa si escribís `Titulo:`, `titulo:` o `TITULO:`, siempre matchea contra `wts_comando_campos_clave` (que sí espera una capitalización fija, ej. `["Titulo","Fecha"]`). El **valor** después de los `:` nunca se normaliza así — cada tipo de comando decide qué hacer con él (ej. `Modo` se pasa a minúsculas en `ejecutarHostHttp`, `Recordatorio` se parsea con su propio regex, etc).
 
 Ejemplos:
 ```
@@ -248,7 +252,8 @@ ejecutarCalendario(cuentaId, comando, campos)
 
   await generarMensajes(calendario_id, client)   // src/db.js — ver FLUJO.md Flujo 2
 
-  return { Titulo: titulo, Fecha: campos.Fecha, Recordatorio: campos.Recordatorio || '' }
+  return { Titulo: titulo, Fecha: campos.Fecha,
+            RecordatorioTexto: campos.Recordatorio ? `, aviso ${campos.Recordatorio}` : '' }
 ```
 
 `parsearRecordatorio()` traduce lenguaje natural simple a los tipos ya definidos en `wts_calendario_alerta` (ver `README.md` — tabla de tipos de alerta):
@@ -277,9 +282,46 @@ ejecutarApiExterna(comando, campos)
 
 > Usa el `fetch` nativo de Node 22 (ya es la base de la imagen Docker) — no hace falta agregar `node-fetch` ni ninguna dependencia nueva.
 
+#### `HOST_HTTP` — caso "conectar_vpn"
+
+El contenedor Docker es Linux — no puede manejar VPN de Windows, servicios, ni nada que dependa de PowerShell. Este tipo le pega por HTTP a un **agente que corre nativo en el host Windows** (`scripts/agentes-host/vpn-agent.js`, fuera de Docker), autenticado con un token fijo (`x-agent-token`, sin expiración — mismo patrón que `API_KEY`). Puesta en marcha completa en `INSTALAR v2.md` sección 3.8f.
+
+```
+ejecutarHostHttp(comando, campos)
+  url = comando.config.url + query params de comando.config.params
+  si campos.Modo existe → sobreescribe el parámetro "modo" de la URL
+  resp = await fetch(url, { method: comando.config.metodo, headers: { 'x-agent-token': process.env[comando.config.token_env] } })
+  return { mensaje: resp.mensaje }   // no lanza excepción si el agente responde ok:false
+```
+
+El agente del otro lado (`vpn-agent.js`) no es un endpoint fijo por VPN — es un despachador genérico por `nombre` (catálogo `DEFINICIONES`, hoy solo tiene `vpn`), con tres acciones:
+```
+POST /proceso/iniciar?nombre=vpn&modo=consola|sinconsola
+GET  /proceso/estado?nombre=vpn
+POST /proceso/terminar?nombre=vpn
+```
+`modo=consola` lanza un watchdog perpetuo (visible, nunca termina solo — se corta con `/proceso/terminar`). `modo=sinconsola` (el que usa `conectar_vpn` por defecto) hace un intento único y **espera el resultado real** antes de responder.
+
+> **Por qué la respuesta de `conectar_vpn` no llega instantánea:** conectar la VPN interrumpe la red del contenedor un instante (se ve en los logs como timeouts de `init queries` de Baileys). Mandar la confirmación directo por el socket (`sock.sendMessage()`) se quedaba colgado para siempre esperando un ACK que nunca llegaba. La solución fue encolarla como un `wts_mensaje` normal (`encolarRespuestaComando()` en `db.js`) en vez de enviarla directo — el scheduler que ya existe la entrega en su próximo ciclo (`INTERVALO_MINUTOS`), resistente a la desconexión momentánea. Este patrón queda disponible para cualquier comando futuro cuya acción interrumpa la red, no es exclusivo de VPN.
+
+### B.3.1 Formato exacto que acepta `crear_recordatorio` (verificado contra `src/comandos.js`)
+
+Cada campo va en **su propia línea**, formato `Clave: valor` (el `;` final es opcional — `parsearCampos()` lo recorta si está, pero da igual si no lo pones):
+
+| Campo | Obligatorio | Formato aceptado | Regex real (`comandos.js`) |
+|---|---|---|---|
+| `Titulo` | Sí | Cualquier texto | — |
+| `Fecha` | Sí | `DD-MM-YYYY` o `DD-MM-YYYY HH:MM` (1-2 dígitos día/mes, 4 dígitos año, hora 24h) | `^(\d{1,2})-(\d{1,2})-(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$` |
+| `Mensaje` | No | Cualquier texto | — |
+| `Recordatorio` | No — solo **una** línea, no admite varias reglas | `HH:MM` (hora fija el mismo día) **o** `N dias antes` / `N horas antes` / `N minutos antes` (singular/plural, no distingue mayúsculas) | hora fija: `^(\d{1,2}):(\d{2})$` · relativo: `^(\d+)\s*(dias?\|horas?\|minutos?)\s*antes$` |
+
+Si `Fecha` o `Recordatorio` no calzan exacto con su formato, el bot responde con un error (`fecha invalida: "..."` / `recordatorio no reconocido: "..."`) en vez de crear el evento — no hay tolerancia a variantes como `"mañana"`, `"30/07/2026"` o `"en 1 hora"`.
+
+Requisito previo: la cuenta debe tener `wts_cuenta_consola_activo = 1` (sección 3.8a de `INSTALAR v2.md`), si no, el mensaje se guarda como recibido normal y no se ejecuta nada.
+
 ### B.4 Resultado esperado
 
-**Ejemplo calendario:**
+**Ejemplo calendario — así se escribe exactamente en el chat "Yo":**
 ```
 Tú → "Yo": Titulo: Recordatorio;
            Mensaje: Mi hermano no olvide nuestra reunion hoy;

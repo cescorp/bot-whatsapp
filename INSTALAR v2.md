@@ -811,13 +811,23 @@ UPDATE wts_cuenta SET wts_cuenta_consola_activo = 1 WHERE wts_cuenta_id = 1;
 
 ### b) Comando de recordatorio (no requiere API externa)
 
-Envía al chat "Yo":
+Envía al chat "Yo", **una línea por campo**, con este formato exacto (el `;` final es opcional):
 ```
 Titulo: Reunion equipo;
 Mensaje: No olvides la reunion;
 Fecha: 30-07-2026 09:00;
 Recordatorio: 1 hora antes
 ```
+
+| Campo | Obligatorio | Formato válido |
+|---|---|---|
+| `Titulo` | Sí | Cualquier texto |
+| `Fecha` | Sí | `DD-MM-YYYY` o `DD-MM-YYYY HH:MM` (hora 24h, opcional) |
+| `Mensaje` | No | Cualquier texto |
+| `Recordatorio` | No (una sola línea, no varias reglas) | `HH:MM` (hora fija ese día) **o** `N dias antes` / `N horas antes` / `N minutos antes` |
+
+> Si `Fecha` o `Recordatorio` no calzan exacto con ese formato (ej. `"30/07/2026"` o `"mañana"`), el bot responde con un error en vez de crear el evento — no interpreta lenguaje natural libre. Detalle del parser (`src/comandos.js`) en `Activar_Consola_Comando.md` sección B.3.1.
+
 El bot responde confirmando y crea el evento en `wts_calendario` (mismo mecanismo del Flujo 2 — `generarMensajes()` en `src/db.js`, sección "Cómo funciona la generación de mensajes de calendario" del README).
 
 ### c) Configurar la API de Gastos (para el comando `consulta_gastos`)
@@ -888,6 +898,112 @@ Gastos: 10-07-2026                            ← total del 1 del mes actual a e
 |---|---|---|
 | Palabra/campos clave, URL, parámetros de la API, texto de confirmación general | `UPDATE wts_comando` (base de datos) | No |
 | Cómo se interpreta/formatea la forma de una respuesta nueva, o un tipo de acción nuevo | `src/comandos.js` (código) | Sí — `docker compose up -d --build` |
+
+### f) Agente de host — acciones que el contenedor Docker no puede hacer (ej. VPN, opcional)
+
+El bot corre en un contenedor Linux (Alpine) — no puede manejar VPN de Windows, servicios de Windows, ni nada que dependa de PowerShell o de programas instalados directamente en el equipo. Para eso existe un **agente aparte**, que corre nativo en Windows (fuera de Docker) y escucha peticiones del bot por HTTP. El comando de ejemplo incluido es `conectar_vpn`, pero el agente está armado para agregar más acciones de este tipo después sin crear nada nuevo desde cero.
+
+> ⚠️ Como usa PowerShell y `rasdial`, este agente es específico de **Windows** y de **tu** conexión VPN — los pasos b) y f) de abajo hay que adaptarlos con el nombre real de tu conexión VPN y tus credenciales.
+
+#### 1. Instalar Node.js en el host (aparte del que corre dentro de Docker)
+
+```powershell
+winget install -e --id OpenJS.NodeJS.LTS
+```
+
+Cierra y abre PowerShell de nuevo, y confirma:
+```powershell
+node -v
+```
+
+#### 2. Ubicar los scripts de PowerShell de tu VPN
+
+El agente espera dos scripts distintos, según si querés dejarlo vigilando la conexión para siempre o solo conectar una vez:
+
+- **Watchdog perpetuo** (opcional, para dejarlo revisando la conexión cada N minutos y reconectar solo si se cae) — un `.ps1` en cualquier ruta del sistema (ej. `C:\VPNA.ps1`) con un bucle `while ($true)` que revisa el estado con `Get-VpnConnection` y llama `rasdial` si hace falta.
+- **Conexión de una vez** (`scripts\agentes-host\vpn-once.ps1`, ya viene en el proyecto como plantilla) — reemplaza `$VpnName`, `$User` y `$Pass` con los datos reales de tu conexión VPN de Windows. Este es el que se usa por defecto al escribir `Vpn: conectar`.
+
+> Las credenciales de la VPN quedan en texto plano dentro de estos `.ps1` — es el mismo riesgo que ya asumís con cualquier script de conexión automática en el equipo. Ninguno de los dos se sube a git (`scripts/agentes-host/` está en `.gitignore` salvo el propio código del agente).
+
+#### 3. Generar un token fijo para el agente
+
+Es una clave igual de larga que `API_KEY`, pero **sin expiración ni rotación** — se compara por igualdad, nunca caduca:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+```
+
+Copia el resultado, lo vas a usar dos veces en el siguiente paso.
+
+#### 4. Configurar los dos `.env` (bot y agente)
+
+**En el `.env` de la raíz del proyecto** (el que usa Docker — sección 2.1), agregar:
+```env
+# ── AGENTE DE HOST (scripts/agentes-host/vpn-agent.js) ──────────
+VPN_AGENT_TOKEN=TU_TOKEN_GENERADO_EN_EL_PASO_3
+VPN_AGENT_URL=http://host.docker.internal:5905
+```
+
+**Crear `scripts\agentes-host\.env`** (no existe todavía, hay que crearlo — Bloc de Notas, guardar como `.env` sin extensión `.txt`, igual que en la sección 2.1):
+```env
+VPN_AGENT_TOKEN=EL_MISMO_TOKEN_DEL_PASO_ANTERIOR
+VPN_AGENT_PORT=5905
+```
+
+#### 5. Reconstruir la imagen del bot
+
+```powershell
+docker compose up -d --build
+```
+
+#### 6. Crear la Tarea Programada de Windows (para que el agente arranque solo)
+
+> ⚠️ **No la configures para correr como `SYSTEM`.** Tu conexión VPN está asociada a tu perfil de usuario de Windows, no a "todos los usuarios" — si la tarea corre como `SYSTEM` (un perfil totalmente distinto), `rasdial` no va a encontrar tu conexión aunque el agente arranque bien.
+
+1. `Win + R` → `taskschd.msc` → Enter.
+2. Panel derecho → **Crear tarea...** (no "Tarea básica").
+3. **General:** Nombre `Agente de Host bot-whatsapp` · marcar **"Ejecutar tanto si el usuario inició sesión como si no"** · dejar **sin marcar** "No almacenar contraseña".
+4. **Desencadenadores:** Nuevo → "Al iniciar el equipo".
+5. **Acciones:** Nuevo → Programa: `C:\Program Files\nodejs\node.exe` → Argumentos: `C:\bot-whatsapp\scripts\agentes-host\vpn-agent.js`.
+6. **Condiciones** (si es laptop): considerar desmarcar "Iniciar la tarea solo si el equipo está conectado a la corriente".
+7. Aceptar → Windows pide tu contraseña de inicio de sesión de Windows en un diálogo del sistema — se ingresa ahí (necesaria para que la tarea pueda correr sin sesión abierta).
+
+**Verificar sin reiniciar:** click derecho sobre la tarea → **Ejecutar**, y luego:
+```powershell
+Get-Process node
+```
+Debe aparecer un proceso corriendo. Para probarlo después de un reinicio completo del equipo, repetir el mismo `Get-Process node`.
+
+#### 7. Dar de alta el comando en la base de datos
+
+```sql
+INSERT INTO wts_comando (
+  wts_comando_nombre, wts_comando_tipo, wts_comando_campos_clave,
+  wts_comando_config, wts_comando_respuesta
+) VALUES (
+  'conectar_vpn',
+  'HOST_HTTP',
+  '["Vpn"]',
+  '{"url": "http://host.docker.internal:5905/proceso/iniciar", "metodo": "POST", "token_env": "VPN_AGENT_TOKEN", "params": {"nombre": "vpn", "modo": "sinconsola"}}',
+  '🔌 {{mensaje}}'
+);
+```
+
+#### 8. Uso
+
+Al chat "Yo": `Vpn: conectar` (no importan mayúsculas/minúsculas en el nombre del campo). La respuesta **no es instantánea** — se encola como un mensaje normal y llega dentro de `INTERVALO_MINUTOS` (1 min por defecto), no directo por el socket, porque conectar la VPN puede cortar la red del contenedor un instante.
+
+Si además querés el modo "vigilancia perpetua" (deja la VPN monitoreada y se reconecta sola si se cae), agregá una segunda línea al mensaje:
+```
+Vpn: conectar
+Modo: consola
+```
+Para cortarlo, hay que llamar al agente directo (todavía no tiene su propio comando de chat):
+```powershell
+Invoke-RestMethod -Uri "http://localhost:5905/proceso/terminar?nombre=vpn" -Method POST `
+  -Headers @{"x-agent-token"="TU_TOKEN"}
+```
+Esto mata el proceso **y** desconecta la VPN (`rasdial /disconnect`) — si estás trabajando remoto a través de esa misma VPN, hacerlo te corta el acceso a la máquina.
 
 ---
 

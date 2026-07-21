@@ -425,8 +425,27 @@ async function guardarMensajeEnviado(cuentaId, { jid, nombre, texto, esGrupo, or
   ])
 }
 
+// Encola la respuesta de un comando de consola como un mensaje normal, en vez de
+// mandarla directo por el socket — si la propia acción del comando interrumpe la red
+// un instante (ej. conectar una VPN), sendMessage() puede quedarse colgado para siempre
+// esperando un ACK que nunca llega. El scheduler ya reintenta solo si WhatsApp está
+// desconectado (ver REGLAS.md), así que se aprovecha esa cola en vez de pelear contra
+// la desconexión momentánea.
+async function encolarRespuestaComando(cuentaId, destino, texto) {
+  await pool.query(`
+    INSERT INTO wts_mensaje (
+      wts_mensaje_tipo, wts_mensaje_origen,
+      wts_mensaje_destino, wts_mensaje_texto,
+      wts_mensaje_fecha_programada, wts_mensaje_estado,
+      wts_mensaje_prioridad, wts_mensaje_intentos,
+      wts_cuenta_id, user_crea
+    ) VALUES (1, 3, $1, $2, NOW(), 1, 5, 0, $3, 'COMANDO')
+  `, [destino, texto, cuentaId])
+}
+
 module.exports = {
   pool, obtenerPendientes, marcarEnviado, marcarError, obtenerConfig, obtenerCuentasActivas, guardarMensajeRecibido,
   obtenerEstadoWatchdog, actualizarPingWatchdog, confirmarWatchdog, marcarAlertaWatchdogEnviada,
   obtenerConsolaActiva, buscarComando, crearRecordatorioDesdeComando, guardarMensajeEnviado, generarMensajes,
+  encolarRespuestaComando,
 }

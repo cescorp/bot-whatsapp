@@ -1,6 +1,14 @@
 // Consola de comandos del chat "Yo" — ver Activar_Consola_Comando.md
 const { buscarComando, crearRecordatorioDesdeComando } = require('./db')
 
+// "vpn" | "VPN" | "Vpn" → "Vpn" — todos los nombres de campo del sistema son una sola
+// palabra con la primera letra en mayúscula (Titulo, Fecha, Modo, Vpn, ...), así que
+// normalizar acá alcanza para que el resto del código (destructuring, campos.Modo,
+// buscarComando) siga funcionando sin cambios, sin importar cómo lo haya escrito el usuario.
+function normalizarClave(clave) {
+  return clave.charAt(0).toUpperCase() + clave.slice(1).toLowerCase()
+}
+
 // Parsea un mensaje tipo formulario "Clave: valor" (una por línea) a un objeto plano.
 // Devuelve {} si el texto no tiene ninguna línea con ese formato.
 function parsearCampos(texto) {
@@ -8,7 +16,7 @@ function parsearCampos(texto) {
   for (const linea of texto.split('\n')) {
     const idx = linea.indexOf(':')
     if (idx === -1) continue
-    const clave = linea.slice(0, idx).trim()
+    const clave = normalizarClave(linea.slice(0, idx).trim())
     const valor = linea.slice(idx + 1).trim().replace(/;$/, '')
     if (clave) campos[clave] = valor
   }
@@ -165,10 +173,32 @@ async function ejecutarApiExterna(comando, campos) {
   return { mensaje: partes.join('\n\n') }
 }
 
+// Le pega a un agente HTTP que corre nativo en el host Windows (fuera de Docker) — ver
+// scripts/agentes-host/. Usado para acciones que el contenedor Linux no puede hacer (VPN, etc).
+// No lanza excepción si el agente responde ok=false: ese mensaje ya es legible para el
+// usuario tal cual (el propio agente arma "VPN ya en ejecución", "error: ...", etc).
+async function ejecutarHostHttp(comando, campos) {
+  const cfg   = comando.config || {}
+  const token = process.env[cfg.token_env]
+  const url   = new URL(cfg.url)
+  for (const [clave, valor] of Object.entries(cfg.params || {})) {
+    url.searchParams.set(clave, valor)
+  }
+  if (campos.Modo) url.searchParams.set('modo', campos.Modo.trim().toLowerCase())
+
+  const resp = await fetch(url, {
+    method: cfg.metodo || 'POST',
+    headers: { 'x-agent-token': token },
+  })
+  const data = await resp.json().catch(() => null)
+  return { mensaje: data?.mensaje || `error inesperado del agente de host (HTTP ${resp.status})` }
+}
+
 async function ejecutarComando(cuentaId, comando, campos) {
   switch (comando.tipo) {
     case 'CALENDARIO':  return ejecutarCalendario(cuentaId, comando, campos)
     case 'API_EXTERNA':  return ejecutarApiExterna(comando, campos)
+    case 'HOST_HTTP':    return ejecutarHostHttp(comando, campos)
     default: throw new Error(`tipo de comando desconocido: ${comando.tipo}`)
   }
 }

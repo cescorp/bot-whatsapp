@@ -11,7 +11,7 @@ const pino   = require('pino')
 const path   = require('path')
 const fs     = require('fs')
 const logger = require('./logger')
-const { obtenerConfig, guardarMensajeRecibido, confirmarWatchdog, obtenerConsolaActiva, guardarMensajeEnviado } = require('./db')
+const { obtenerConfig, guardarMensajeRecibido, confirmarWatchdog, obtenerConsolaActiva, guardarMensajeEnviado, encolarRespuestaComando } = require('./db')
 const { procesarComando } = require('./comandos')
 
 const AUTH_BASE   = path.join(__dirname, 'auth')
@@ -160,8 +160,14 @@ async function iniciarCuenta(cuentaId, nombre) {
         if (esSelfChat && texto && await obtenerConsolaActiva(cuentaId)) {
           const respuesta = await procesarComando(cuentaId, texto)
           if (respuesta) {
-            await sock.sendMessage(jid, { text: respuesta })
-            logger.info({ cuentaId }, 'Comando ejecutado desde consola Yo')
+            // Se encola en vez de enviar directo por el socket: si la propia acción del
+            // comando interrumpe la red un instante (ej. conectar una VPN), sendMessage()
+            // puede quedarse colgado para siempre esperando un ACK que nunca llega. El
+            // scheduler ya reintenta solo cuando WhatsApp está desconectado (ver
+            // REGLAS.md), así que la respuesta llega en su próximo ciclo sin pelear
+            // contra la desconexión momentánea.
+            await encolarRespuestaComando(cuentaId, jid, respuesta)
+            logger.info({ cuentaId }, 'Respuesta de comando encolada')
             continue
           }
         }
@@ -182,7 +188,8 @@ async function iniciarCuenta(cuentaId, nombre) {
         logger.info({ jid, cuentaId, esGrupo, esSelfChat }, 'Mensaje recibido guardado')
 
         if (marcarLeido === 'SI') {
-          await sock.readMessages([message.key])
+          const socketActivo = cuentas.get(cuentaId)?.sock
+          if (socketActivo) await socketActivo.readMessages([message.key])
         }
       } catch (err) {
         logger.error({ err, cuentaId }, 'Error procesando mensaje recibido')
